@@ -16,8 +16,10 @@ router = Router(name="export")
 @router.message(Command("export"))
 async def cmd_export(message: Message):
     await delete_message(message)
+    if message.from_user.id not in settings.ADMIN_IDS:
+        await temp_msg(message, "❌ Эта команда доступна только администраторам")
+        return
     chat_id = message.chat.id
-
     start_date, end_date, err = parse_date_period(message.text, "/export")
     if err:
         await temp_msg(message, err)

@@ -73,6 +73,9 @@ async def process_contractor_name(message: Message, state: FSMContext):
 @router.message(Command("bal"))
 async def cmd_bal(message: Message):
     await delete_message(message)
+    if message.from_user.id not in settings.ADMIN_IDS:
+        await temp_msg(message, "❌ Эта команда доступна только администраторам")
+        return
     chat_id = message.chat.id
     balance_rub, balance_usdt = await get_balance(chat_id)
     commission = await get_commission(chat_id)

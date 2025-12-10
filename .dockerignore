@@ -40,3 +40,5 @@ docker-compose.yml
 *.db
 .DS_Store
 node_modules/
+
+files/

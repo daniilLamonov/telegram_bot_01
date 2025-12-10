@@ -579,8 +579,7 @@ async def cmd_history_check(message: Message):
     )
 
     if not os.path.exists(filepath):
-        await temp_msg(message, "❌ Файл не найден на сервере")
-        await message.answer(operation_info,
+        await message.answer("❌ Файл/фото не найден на сервере\n" + operation_info,
                              parse_mode="HTML",
                              reply_markup=get_delete_keyboard(),
                              )

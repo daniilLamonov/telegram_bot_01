@@ -14,7 +14,8 @@ from handlers import (
     admin_router,
     help_router,
     export_router,
-    callbacks_router
+    callbacks_router,
+    reconciliation_router
 )
 
 
@@ -47,6 +48,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(help_router)
     dp.include_router(export_router)
+    dp.include_router(reconciliation_router)
 
     await set_bot_commands(bot)
 

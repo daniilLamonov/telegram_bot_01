@@ -6,3 +6,7 @@ class CheckStates(StatesGroup):
 
 class InitStates(StatesGroup):
     waiting_for_name = State()
+
+class ReconciliationStates(StatesGroup):
+    """Состояния для сверки"""
+    waiting_for_date = State()

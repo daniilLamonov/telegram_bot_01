@@ -567,7 +567,15 @@ async def cmd_history_check(message: Message):
     filepath = os.path.join(FILES_DIR, filename)
 
     if not os.path.exists(filepath):
-        await temp_msg(message, "❌ Файл не найден на сервере")
+        await message.answer("❌ Файл не найден на сервере\n"
+                             f"📋 <b>Операция #{operation_id}</b>\n\n"
+                             f'💰 Зачислено: {operation["amount"]:.2f} {operation["currency"]}\n'
+                             f'📅 Дата: {operation["timestamp"].strftime("%d.%m.%Y %H:%M")}\n'
+                             f"👤 Внес: @{safe_username}\n"
+                             f"🏢 КА: {safe_contractor}",
+                             parse_mode="HTML",
+                             reply_markup=get_delete_keyboard(),
+                             )
         return
 
     contractor_name = await get_contractor_name(operation["chat_id"])

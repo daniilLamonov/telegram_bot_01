@@ -653,3 +653,34 @@ async def export_to_excel(
 
     buffer.seek(0)
     return buffer
+
+
+async def get_checks_by_date(chat_id: int, start_date, end_date):
+    """Получить все чеки за указанный период"""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        results = await conn.fetch('''
+            SELECT operation_id,
+                   username,
+                   amount,
+                   timestamp,
+                   description
+            FROM operations
+            WHERE chat_id = $1
+              AND operation_type = 'пополнение_руб_чек'
+              AND timestamp >= $2
+              AND timestamp < $3
+            ORDER BY timestamp DESC
+        ''', chat_id, start_date, end_date)
+
+        return [dict(row) for row in results]
+
+
+async def get_checks_by_exact_date(chat_id: int, date):
+    """Получить все чеки за конкретную дату"""
+    from datetime import timedelta
+
+    start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = start_date + timedelta(days=1)
+
+    return await get_checks_by_date(chat_id, start_date, end_date)

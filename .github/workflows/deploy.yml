@@ -22,4 +22,4 @@ jobs:
           git pull origin main
           docker-compose down
           docker-compose up -d --build
-          docker-compose logs --tail=30 bot
+          docker-compose logs --tail=30 tg_bot

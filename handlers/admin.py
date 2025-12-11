@@ -36,8 +36,6 @@ async def cmd_new(message: Message):
         await temp_msg(message, "Ошибка: введите корректный процент")
 
 
-
-
 @router.message(Command("init"))
 async def cmd_init(message: Message):
     await delete_message(message)

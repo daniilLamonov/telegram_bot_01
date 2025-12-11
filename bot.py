@@ -44,13 +44,14 @@ async def main():
     dp.message.middleware(ChatInitMiddleware())
     dp.callback_query.middleware(ChatInitMiddleware())
 
+
     dp.include_router(callbacks_router)
+    dp.include_router(admin_router)
     dp.include_router(check_router)
     dp.include_router(common_router)
     dp.include_router(balance_up_router)
     dp.include_router(payments_router)
     dp.include_router(exchange_router)
-    dp.include_router(admin_router)
     dp.include_router(help_router)
     dp.include_router(export_router)
     dp.include_router(history_router)

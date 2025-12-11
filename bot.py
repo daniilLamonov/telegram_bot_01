@@ -23,10 +23,7 @@ from handlers import (
 async def set_bot_commands(bot: Bot):
     user_commands = [
         BotCommand(command="check", description="📸 Пополнить баланс по чеку"),
-        # BotCommand(command="bal", description="💰 Текущий баланс"),
-        # BotCommand(command="help", description="❓ Помощь"),
         BotCommand(command="/sv", description="📊 История операций"),
-        # BotCommand(command="export", description="📑 Экспорт в Excel"),
     ]
 
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
@@ -46,7 +43,6 @@ async def main():
 
 
     dp.include_router(callbacks_router)
-    dp.include_router(admin_router)
     dp.include_router(check_router)
     dp.include_router(common_router)
     dp.include_router(balance_up_router)
@@ -55,6 +51,7 @@ async def main():
     dp.include_router(help_router)
     dp.include_router(export_router)
     dp.include_router(history_router)
+    dp.include_router(admin_router)
 
     await set_bot_commands(bot)
 

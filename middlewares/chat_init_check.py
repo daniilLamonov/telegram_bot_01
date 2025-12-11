@@ -1,6 +1,5 @@
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
-from aiogram.fsm.context import FSMContext
 from aiogram.types import TelegramObject, Message, CallbackQuery
 from config import settings
 from database.queries import is_chat_initialized

@@ -35,6 +35,8 @@ async def cmd_new(message: Message):
         await temp_msg(message, "Ошибка: введите корректный процент")
 
 
+
+
 @router.message(Command("init"))
 async def cmd_init(message: Message, state: FSMContext):
     if message.from_user.id not in settings.ADMIN_IDS:
@@ -52,7 +54,7 @@ async def cmd_init(message: Message, state: FSMContext):
         )
         return
 
-    prompt_msg = await temp_msg(message,
+    prompt_msg = await message.answer(
         "📝 <b>Инициализация чата</b>\n\n"
         "Введите название контрагента:",
         parse_mode="HTML"
@@ -71,12 +73,15 @@ async def cmd_init(message: Message, state: FSMContext):
 @router.message(InitStates.waiting_for_name)
 async def process_contractor_name(message: Message, state: FSMContext):
     contractor_name = message.text.strip()
-
     if not contractor_name:
         await temp_msg(message, "❌ Название не может быть пустым. Попробуйте ещё раз:")
         return
 
     data = await state.get_data()
+    # try:
+    #     await message.bot.delete_message(message.chat.id, data['prompt_message_id'])
+    # except:
+    #     pass
     chat_id = data['chat_id']
     chat_title = data['chat_title']
     chat_type = data['chat_type']
@@ -110,7 +115,7 @@ async def cmd_reinit(message: Message, state: FSMContext):
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
 
-    prompt_msg = await temp_msg(message,
+    prompt_msg = await message.answer(
         "📝 <b>Изменение контрагента</b>\n\n"
         "Введите новое название:",
         parse_mode="HTML"

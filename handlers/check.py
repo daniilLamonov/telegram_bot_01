@@ -384,7 +384,7 @@ async def show_all_results(bot, chat_id, state: FSMContext):
         return
 
     for result in results_queue:
-        msg = await bot.send_message(
+        await bot.send_message(
             chat_id=chat_id,
             text=f'✅ Баланс пополнен по чеку ({result["file_type"]})\n'
             f'ID:<code>{result["op_id"]}</code>\n'
@@ -415,13 +415,11 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
     except Exception:
         pass
 
-    # Удаляем из очереди
     queue = data.get("queue", [])
     if queue:
         queue.pop(0)
     await state.update_data(queue=queue)
 
-    # Следующий
     await process_next_in_queue(callback.bot, callback.message.chat.id, state)
 
 

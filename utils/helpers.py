@@ -12,7 +12,7 @@ async def temp_msg(message: Message,
         await temp_msg.delete()
     except Exception as e:
         print(e)
-    return temp_msg
+    # return temp_msg
 
 async def delete_message(message: Message):
     try:

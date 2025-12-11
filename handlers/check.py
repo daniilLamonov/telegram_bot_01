@@ -155,18 +155,18 @@ async def add_to_queue(message: Message, state: FSMContext):
     )
 
 
-async def start_processing_after_delay(bot, chat_id, state: FSMContext, user_id: int):
+async def start_processing_after_delay(bot, chat_id, state: FSMContext):
 
     await asyncio.sleep(1)
 
     data = await state.get_data()
-    last_file_time = data.get("last_file_time")
-
-    if last_file_time:
-        time_since_last = (datetime.now() - last_file_time).total_seconds()
-
-        if time_since_last < 2:
-            await asyncio.sleep(2 - time_since_last + 0.1)
+    # last_file_time = data.get("last_file_time")
+    #
+    # if last_file_time:
+    #     time_since_last = (datetime.now() - last_file_time).total_seconds()
+    #
+    #     if time_since_last < 2:
+    #         await asyncio.sleep(2 - time_since_last + 0.1)
 
     try:
         initial_msg_id = data.get("initial_msg_id")

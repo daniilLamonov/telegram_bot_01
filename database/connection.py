@@ -14,13 +14,24 @@ async def init_db():
                            CREATE TABLE IF NOT EXISTS chats
                            (
                                chat_id            BIGINT PRIMARY KEY,
-                               contractor_name    TEXT,
+                               contractor_name    TEXT NOT NULL,
                                commission_percent NUMERIC(5, 2)  DEFAULT 0,
                                balance_rub        NUMERIC(15, 2) DEFAULT 0,
                                balance_usdt       NUMERIC(15, 2) DEFAULT 0,
+                               chat_title         TEXT,
+                               chat_type          TEXT,
+                               is_active          BOOLEAN        DEFAULT true,
+                               initialized_by     BIGINT,
+
                                created_at         TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
                                updated_at         TIMESTAMP      DEFAULT CURRENT_TIMESTAMP
                            )
+                           ''')
+
+            # Создаём индекс для быстрого поиска активных чатов
+        await conn.execute('''
+                           CREATE INDEX IF NOT EXISTS idx_chats_is_active
+                               ON chats (chat_id, is_active)
                            ''')
 
         await conn.execute('''

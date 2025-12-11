@@ -8,11 +8,43 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
-from database.queries import get_checks_by_date, get_checks_by_exact_date, get_contractor_name
+from config import settings
+from database.queries import get_checks_by_date, get_contractor_name, get_history
 from states import ReconciliationStates
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name='reconciliation')
+
+@router.message(Command("history", "h"))
+async def cmd_h(message: Message):
+    await delete_message(message)
+    if message.from_user.id not in settings.ADMIN_IDS:
+        await temp_msg(message, "❌ Эта команда доступна только администраторам")
+        return
+    chat_id = message.chat.id
+
+    history = await get_history(chat_id)
+
+    if not history:
+        await temp_msg(message, "📜 История операций пуста")
+        return
+
+    contractor = await get_contractor_name(chat_id)
+    msg = f"📜 Последние 10 операций\nКонтрагент: {contractor}\n\n"
+
+    for op in history:
+        msg += f'🔹 ID: {op["operation_id"]}\n'
+        msg += f'Пользователь: @{op["username"]}\n'
+        msg += f'Тип: {op["operation_type"]}\n'
+        msg += f'Сумма: {float(op["amount"]):.2f} {op["currency"]}\n'
+        if op["exchange_rate"]:
+            msg += f'Курс: {float(op["exchange_rate"])}\n'
+        msg += f'Время: {op["timestamp"]}\n'
+        if op["description"]:
+            msg += f'Описание: {op["description"]}\n'
+        msg += "\n"
+
+    await message.answer(msg, parse_mode="HTML", reply_markup=get_delete_keyboard())
 
 
 @router.message(Command("sv"))

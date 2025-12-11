@@ -130,10 +130,6 @@ async def get_balance(chat_id: int):
                                      ''', chat_id)
 
         if not result:
-            await conn.execute('''
-                               INSERT INTO chats (chat_id, balance_rub, balance_usdt)
-                               VALUES ($1, 0, 0)
-                               ''', chat_id)
             return (0.0, 0.0)
 
         return (float(result['balance_rub']), float(result['balance_usdt']))
@@ -684,3 +680,57 @@ async def get_checks_by_exact_date(chat_id: int, date):
     end_date = start_date + timedelta(days=1)
 
     return await get_checks_by_date(chat_id, start_date, end_date)
+
+
+async def is_chat_initialized(chat_id: int) -> bool:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            'SELECT EXISTS(SELECT 1 FROM chats WHERE chat_id = $1 AND is_active = true)',
+            chat_id
+        )
+        return result
+
+
+async def get_chat_info(chat_id: int) -> dict | None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            'SELECT * FROM chats WHERE chat_id = $1',
+            chat_id
+        )
+        return dict(row) if row else None
+
+
+async def initialize_chat(
+    chat_id: int,
+    chat_title: str,
+    chat_type: str,
+    contractor_name: str,
+    initialized_by: int
+) -> bool:
+    """Инициализация чата"""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute('''
+                INSERT INTO chats (
+                    chat_id, 
+                    chat_title, 
+                    chat_type, 
+                    contractor_name,
+                    initialized_by,
+                    is_active
+                )
+                VALUES ($1, $2, $3, $4, $5, true)
+                ON CONFLICT (chat_id) 
+                DO UPDATE SET 
+                    contractor_name = EXCLUDED.contractor_name,
+                    chat_title = EXCLUDED.chat_title,
+                    is_active = true,
+                    updated_at = NOW()
+            ''', chat_id, chat_title, chat_type, contractor_name, initialized_by)
+            return True
+        except Exception as e:
+            print(f"❌ Error initializing chat: {e}")
+            return False

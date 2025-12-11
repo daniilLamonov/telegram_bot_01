@@ -8,7 +8,7 @@ from .exchange import router as exchange_router
 from .export import router as export_router
 from .help import router as help_router
 from .payments import router as payments_router
-from .reconciliation import router as reconciliation_router
+from .history import router as history_router
 
 __all__ = [
     "common_router",
@@ -20,5 +20,5 @@ __all__ = [
     "admin_router",
     "export_router",
     "callbacks_router",
-    "reconciliation_router",
+    "history_router",
 ]

@@ -112,13 +112,24 @@ async def get_commission(chat_id: int) -> float:
 
 async def set_commission(chat_id: int, percent: float):
     db_pool = get_pool()
-    async with db_pool.acquire() as conn:
-        await conn.execute('''
-                           INSERT INTO chats (chat_id, commission_percent)
-                           VALUES ($1, $2)
-                           ON CONFLICT (chat_id) DO UPDATE SET commission_percent = $2
-                           ''', chat_id, percent)
 
+    async with db_pool.acquire() as conn:
+        # Проверяем существует ли чат
+        exists = await conn.fetchval(
+            'SELECT EXISTS(SELECT 1 FROM chats WHERE chat_id = $1)',
+            chat_id
+        )
+
+        if exists:
+            # Если существует - только обновляем commission
+            await conn.execute('''
+                               UPDATE chats
+                               SET commission = $1
+                               WHERE chat_id = $2
+                               ''', percent, chat_id)
+            return True
+        else:
+            return False
 
 async def get_balance(chat_id: int):
     db_pool = get_pool()

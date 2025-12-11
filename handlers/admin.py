@@ -26,7 +26,10 @@ async def cmd_new(message: Message):
         percent = float(args[0])
         chat_id = message.chat.id
 
-        await set_commission(chat_id, percent)
+        is_set = await set_commission(chat_id, percent)
+
+        if not is_set:
+            await temp_msg("Чат не инициализирован")
 
         await temp_msg(message, f"✅ Комиссия при пополнении установлена: {percent}%\n")
     except (ValueError, IndexError):

@@ -145,31 +145,26 @@ async def get_balance(chat_id: int):
 
         return (float(result['balance_rub']), float(result['balance_usdt']))
 
-
 async def update_balance(chat_id: int, balance_rub: float, balance_usdt: float):
     db_pool = get_pool()
     async with db_pool.acquire() as conn:
         await conn.execute('''
-                           INSERT INTO chats (chat_id, balance_rub, balance_usdt, updated_at)
-                           VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                           ON CONFLICT (chat_id) DO UPDATE SET balance_rub  = $2,
-                                                               balance_usdt = $3,
-                                                               updated_at   = CURRENT_TIMESTAMP
-                           ''', chat_id, balance_rub, balance_usdt)
+            UPDATE chats 
+            SET balance_rub = $1,
+                balance_usdt = $2,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE chat_id = $3
+        ''', balance_rub, balance_usdt, chat_id)
 async def add_to_balance(chat_id: int, amount_rub: float, amount_usdt: float = 0.0):
     db_pool = get_pool()
     async with db_pool.acquire() as conn:
-        await conn.execute(
-            '''
-            INSERT INTO chats (chat_id, balance_rub, balance_usdt, updated_at)
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-            ON CONFLICT (chat_id) DO UPDATE
-            SET balance_rub  = chats.balance_rub  + EXCLUDED.balance_rub,
-                balance_usdt = chats.balance_usdt + EXCLUDED.balance_usdt,
-                updated_at   = CURRENT_TIMESTAMP
-            ''',
-            chat_id, amount_rub, amount_usdt
-        )
+        await conn.execute('''
+            UPDATE chats 
+            SET balance_rub = balance_rub + $1,
+                balance_usdt = balance_usdt + $2,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE chat_id = $3
+        ''', amount_rub, amount_usdt, chat_id)
 
 
 async def log_operation(chat_id: int, user_id: int, username: str, op_type: str,

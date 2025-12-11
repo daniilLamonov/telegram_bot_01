@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault
-# from middlewares.chat_init_check import ChatInitMiddleware
+from middlewares.chat_init_check import ChatInitMiddleware
 from config import settings
 from database.connection import init_db, close_db
 from handlers import (
@@ -41,8 +41,8 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
-    # dp.message.middleware(ChatInitMiddleware())
-    # dp.callback_query.middleware(ChatInitMiddleware())
+    dp.message.middleware(ChatInitMiddleware())
+    dp.callback_query.middleware(ChatInitMiddleware())
 
 
     dp.include_router(callbacks_router)

@@ -15,7 +15,7 @@ from database.queries import (
     add_to_balance,
     get_check,
     get_contractor_name,
-    log_operation, delete_operation_with_balance_correction, get_operation_details,
+    log_operation, delete_operation_with_balance_correction, get_operation_details, update_balance,
 )
 from states import CheckStates
 from utils.helpers import delete_message, temp_msg

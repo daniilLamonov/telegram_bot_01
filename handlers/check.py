@@ -460,6 +460,7 @@ async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
 async def wrong_file_type(message: Message):
     await delete_message(message)
     await temp_msg(message, "❌ Ожидается фото или документ", parse_mode="HTML")
+    return
 
 
 @router.message(CheckStates.waiting_for_amount, F.photo | F.document)

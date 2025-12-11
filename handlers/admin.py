@@ -31,7 +31,7 @@ async def cmd_new(message: Message):
         if not is_set:
             await temp_msg("Чат не инициализирован")
 
-        await temp_msg(message, f"✅ Комиссия при пополнении установлена: {percent}%\n")
+        await temp_msg(message, f"✅ Комиссия при обмене установлена: {percent}%\n")
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректный процент")
 

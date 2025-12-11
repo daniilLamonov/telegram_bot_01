@@ -12,6 +12,7 @@ from config import settings
 from database.queries import get_checks_by_date, get_contractor_name, get_history
 from states import ReconciliationStates
 from utils.helpers import delete_message, temp_msg
+from utils.keyboards import get_delete_keyboard
 
 router = Router(name='reconciliation')
 
@@ -87,6 +88,14 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
 async def sv_today(callback: CallbackQuery, state: FSMContext):
     """Сверка за сегодня"""
     await callback.answer("📅 Загрузка чеков за сегодня...")
+    data = await state.get_data()
+    sv_msg_id = data.get('sv_msg_id')
+
+    try:
+        if sv_msg_id:
+            await callback.bot.delete_message(callback.message.chat.id, sv_msg_id)
+    except Exception:
+        pass
 
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow = today + timedelta(days=1)
@@ -105,6 +114,14 @@ async def sv_today(callback: CallbackQuery, state: FSMContext):
 async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
     """Сверка за вчера"""
     await callback.answer("📆 Загрузка чеков за вчера...")
+    data = await state.get_data()
+    sv_msg_id = data.get('sv_msg_id')
+
+    try:
+        if sv_msg_id:
+            await callback.bot.delete_message(callback.message.chat.id, sv_msg_id)
+    except Exception:
+        pass
 
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
@@ -227,7 +244,8 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
             f"📭 <b>Чеки не найдены</b>\n\n"
             f"За период: <b>{period_name}</b>\n"
             f"КА: {hd.quote(contractor_name)}",
-            parse_mode='HTML'
+            parse_mode='HTML',
+            reply_markup=get_delete_keyboard()
         )
         return
 
@@ -272,7 +290,7 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
             f"📋 <b>Найдено чеков: {len(checks)}</b>\n"
             f"💰 <b>Общая сумма: {total_amount:.2f} ₽</b>"
         )
-        await message.answer(header, parse_mode='HTML')
+        await message.answer(header, parse_mode='HTML', reply_markup=get_delete_keyboard())
 
         # Разбиваем чеки на части
         chunk_size = 10
@@ -291,9 +309,9 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
                     f"   👤 {hd.quote(payer)}"
                 )
 
-            await message.answer("\n\n".join(chunk_list), parse_mode='HTML')
+            await message.answer("\n\n".join(chunk_list), parse_mode='HTML', reply_markup=get_delete_keyboard())
     else:
-        await message.answer(result_text, parse_mode='HTML')
+        await message.answer(result_text, parse_mode='HTML', reply_markup=get_delete_keyboard())
 
     await state.clear()
 

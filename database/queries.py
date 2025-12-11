@@ -124,7 +124,7 @@ async def set_commission(chat_id: int, percent: float):
             # Если существует - только обновляем commission
             await conn.execute('''
                                UPDATE chats
-                               SET commission = $1
+                               SET commission_percent = $1
                                WHERE chat_id = $2
                                ''', percent, chat_id)
             return True

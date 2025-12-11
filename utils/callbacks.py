@@ -9,6 +9,8 @@ router = Router()
 async def delete_message_callback(callback: CallbackQuery):
     is_admin = callback.from_user.id in settings.ADMIN_IDS
     if not is_admin:
+        await callback.message.answer('❌ Эта возмоджность доступна только администраторам')
+        await callback.answer()
         return
     try:
         await callback.message.delete()

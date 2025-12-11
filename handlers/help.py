@@ -73,7 +73,7 @@ async def cmd_start(message: Message):
             "Используйте /help чтобы узнать, что я умею."
         )
 
-    await temp_msg(greeting, parse_mode="HTML")
+    await temp_msg(message, greeting, parse_mode="HTML")
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):

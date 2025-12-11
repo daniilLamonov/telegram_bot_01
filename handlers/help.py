@@ -9,7 +9,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
-from utils.helpers import delete_message
+from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="help")
@@ -69,10 +69,11 @@ async def cmd_start(message: Message):
         greeting = (
             f"👋 <b>Привет, {message.from_user.first_name}!</b>\n\n"
             "Я бот для учёта чеков.\n\n"
+            "Выполните команду /init для начала работы.\n"
             "Используйте /help чтобы узнать, что я умею."
         )
 
-    await message.answer(greeting, parse_mode="HTML")
+    await temp_msg(greeting, parse_mode="HTML")
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
@@ -83,7 +84,9 @@ async def cmd_help(message: Message):
             get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"
         )
     else:
-        await message.answer(get_help_main_text(), parse_mode="HTML", reply_markup=get_delete_keyboard())
+        await message.answer(
+            get_help_main_text(), reply_markup=get_delete_keyboard(), parse_mode="HTML"
+        )
 
 
 @router.callback_query(F.data.startswith("help_"))

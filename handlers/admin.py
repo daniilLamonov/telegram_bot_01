@@ -38,12 +38,12 @@ async def cmd_new(message: Message):
 @router.message(Command("init"))
 async def cmd_init(message: Message, state: FSMContext):
     if message.from_user.id not in settings.ADMIN_IDS:
-        await message.answer("❌ Эта команда доступна только администраторам")
+        await temp_msg("❌ Эта команда доступна только администраторам")
         return
 
     chat_info = await get_chat_info(message.chat.id)
     if chat_info:
-        await message.answer(
+        await temp_msg(
             f"ℹ️ <b>Чат уже инициализирован</b>\n\n"
             f"📝 Контрагент: <b>{chat_info['contractor_name']}</b>\n"
             f"📅 Инициализирован: {chat_info['created_at'].strftime('%d.%m.%Y %H:%M')}\n\n"
@@ -52,7 +52,7 @@ async def cmd_init(message: Message, state: FSMContext):
         )
         return
 
-    prompt_msg = await message.answer(
+    prompt_msg = await temp_msg(
         "📝 <b>Инициализация чата</b>\n\n"
         "Введите название контрагента:",
         parse_mode="HTML"
@@ -73,7 +73,7 @@ async def process_contractor_name(message: Message, state: FSMContext):
     contractor_name = message.text.strip()
 
     if not contractor_name:
-        await message.answer("❌ Название не может быть пустым. Попробуйте ещё раз:")
+        await temp_msg("❌ Название не может быть пустым. Попробуйте ещё раз:")
         return
 
     data = await state.get_data()
@@ -91,7 +91,7 @@ async def process_contractor_name(message: Message, state: FSMContext):
     )
 
     if success:
-        await message.answer(
+        await temp_msg(
             f"✅ <b>Чат успешно инициализирован!</b>\n\n"
             f"📝 Контрагент: <b>{contractor_name}</b>\n"
             f"🆔 Chat ID: <code>{chat_id}</code>\n\n"
@@ -99,7 +99,7 @@ async def process_contractor_name(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
     else:
-        await message.answer("❌ Ошибка при инициализации чата")
+        await temp_msg("❌ Ошибка при инициализации чата")
 
     await state.clear()
 
@@ -107,10 +107,10 @@ async def process_contractor_name(message: Message, state: FSMContext):
 @router.message(Command("reinit"))
 async def cmd_reinit(message: Message, state: FSMContext):
     if message.from_user.id not in settings.ADMIN_IDS:
-        await message.answer("❌ Эта команда доступна только администраторам")
+        await temp_msg("❌ Эта команда доступна только администраторам")
         return
 
-    prompt_msg = await message.answer(
+    prompt_msg = await temp_msg(
         "📝 <b>Изменение контрагента</b>\n\n"
         "Введите новое название:",
         parse_mode="HTML"

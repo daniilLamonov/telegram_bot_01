@@ -1,6 +1,6 @@
 import re
 
-from database.queries import initialize_chat, get_chat_info
+from database.queries import initialize_chat, get_chat_info, set_commission
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -10,6 +10,29 @@ from config import settings
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="admin")
+
+
+@router.message(Command("new"))
+async def cmd_new(message: Message):
+    await delete_message(message)
+    if message.from_user.id not in settings.ADMIN_IDS:
+        await temp_msg(message, "❌ Эта команда доступна только администраторам")
+        return
+    args = message.text.split()[1:]
+    if not args:
+        await temp_msg(message, "Использование: /new <процент>")
+        return
+    try:
+        percent = float(args[0])
+        chat_id = message.chat.id
+
+        await set_commission(chat_id, percent)
+
+        await temp_msg(message, f"✅ Комиссия при пополнении установлена: {percent}%\n")
+    except (ValueError, IndexError):
+        await temp_msg(message, "Ошибка: введите корректный процент")
+
+
 
 
 @router.message(Command("init"))

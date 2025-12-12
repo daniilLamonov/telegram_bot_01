@@ -83,7 +83,7 @@ async def cmd_ch(message: Message):
             f"{amount_rub:.2f} ₽ списано \n"
             f"{rate} курс\n"
             f"{commission_amount:.2f}$ комиссия в чате (4%)"
-            f"{amount_usdt:.2f}$ пополнен баланс").replace(".", ",")
+            f"{amount_after_commission:.2f}$ пополнен баланс").replace(".", ",")
         )
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректные значения")

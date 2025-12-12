@@ -33,11 +33,11 @@ os.makedirs(FILES_DIR, exist_ok=True)
 @router.message((F.photo | F.document) & F.caption & F.caption.contains("/check"))
 async def cmd_check_with_photo(message: Message):
     await delete_message(message)
-    caption = message.caption.strip()
+    text = message.caption.strip()
 
     match = re.search(
         r"/check\s+([\d\s]+(?:\.\d+)?)\s+(.*)",
-        caption
+        text
     )
     if not match:
         await temp_msg(
@@ -293,10 +293,6 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         try:
             if current_bot_msg:
                 await message.bot.delete_message(message.chat.id, current_bot_msg)
-            # if current_file.get("msg_id"):
-            #     await message.bot.delete_message(
-            #         message.chat.id, current_file["msg_id"]
-            #     )
         except Exception:
             pass
 
@@ -401,14 +397,9 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
     await callback.answer("⏭ Пропущено")
 
     data = await state.get_data()
-    current_file = data.get("current_file")
 
     try:
         await callback.message.delete()
-        # if current_file and current_file.get("msg_id"):
-        #     await callback.bot.delete_message(
-        #         callback.message.chat.id, current_file["msg_id"]
-        #     )
     except Exception:
         pass
 

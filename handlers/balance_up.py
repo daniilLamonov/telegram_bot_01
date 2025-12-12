@@ -1,3 +1,5 @@
+import re
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -16,13 +18,17 @@ async def cmd_gets(message: Message):
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
 
-    args = message.text.split()[1:]
-    if not args:
+    match = re.search(
+        r'/gets\s+(\d+(?:\.\d+)?)\s+',
+        message.text
+    )
+    if not match.groups():
         await temp_msg(message, "Использование: /gets <сумма>")
         return
 
     try:
-        amount = float(args[0])
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
@@ -52,13 +58,17 @@ async def cmd_get(message: Message):
     if message.from_user.id not in settings.ADMIN_IDS:
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
-    args = message.text.split()[1:]
-    if not args:
+    match = re.search(
+        r'/get\s+(\d+(?:\.\d+)?)\s+',
+        message.text
+    )
+    if not match:
         await temp_msg(message, "Использование: /get <сумма>")
         return
 
     try:
-        amount = float(args[0])
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name

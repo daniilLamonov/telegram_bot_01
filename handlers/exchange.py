@@ -1,3 +1,5 @@
+import re
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -15,14 +17,32 @@ async def cmd_ch(message: Message):
     if message.from_user.id not in settings.ADMIN_IDS:
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
-    args = message.text.split()[1:]
-    if len(args) < 2 and not (args[1].isdigit() and args[1].isnumeric()):
-        await temp_msg(message, "Использование: /ch <курс> <сумма_руб>")
+    match = re.search(
+        r'/ch\s+(\d+(?:\.\d+)?)\s+([\d\s.,]+)',
+        message.text
+    )
+    if not match:
+        await temp_msg(
+            message,
+            "❌ <b>Неверный формат!</b>\n\n"
+            "Формат: <b>/ch курс сумма</b>\n\n"
+            "Примеры:\n"
+            "• /ch 95 5 000 000\n"
+            "• /ch 95.5 1 000 000\n"
+            "• /ch 100 500000",
+            parse_mode="HTML"
+        )
         return
 
     try:
-        rate = float(args[0])
-        amount_rub = float(args[1])
+        rate = float(match.group(1))
+
+        amount_str = match.group(2).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_rub = float(amount_str)
+
+        if rate <= 0 or amount_rub <= 0:
+            await temp_msg(message, "❌ Курс и сумма должны быть > 0")
+            return
 
         chat_id = message.chat.id
         user_id = message.from_user.id

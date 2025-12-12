@@ -53,7 +53,7 @@ async def cmd_payr(message: Message):
         await log_operation(chat_id, user_id, username, "выплата_руб", amount, "RUB")
 
         await message.answer(
-            f"Выплата {amount} ₽ выполнена\n" f"Баланс {new_balance_rub} ₽",
+            f"Выплата {amount:.2f} ₽ выполнена\n" f"Баланс {new_balance_rub:.2f} ₽".replace('.', ','),
             reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):
@@ -100,7 +100,7 @@ async def cmd_pays(message: Message):
         await log_operation(chat_id, user_id, username, "выплата_usdt", amount, "USDT")
 
         await message.answer(
-            f"Выплата {amount} USDT выполнена\n" f"Баланс {new_balance_usdt} USDT",
+            f"Выплата {amount:.2f} USDT выполнена\n" f"Баланс {new_balance_usdt:.2f} USDT".replace('.', ','),
             reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):

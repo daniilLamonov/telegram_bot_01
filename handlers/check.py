@@ -153,7 +153,7 @@ async def add_to_queue(message: Message, state: FSMContext):
     await state.update_data(waiting_for_more=True)
     asyncio.create_task(
         start_processing_after_delay(
-            message.bot, message.chat.id, state, message.from_user.id
+            message.bot, message.chat.id, state
         )
     )
 

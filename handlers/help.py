@@ -100,9 +100,9 @@ async def process_help_callback(callback: CallbackQuery):
 3. Введите данные в формате: <code>сумма ФИО</code>
 
 <b>Примеры:</b>
-• <code>5000 Иванов Иван</code>
-• <code>3500.50 Петрова Мария Сергеевна</code>
-• <code>1000</code> (ФИО будет "Не указано")
+• <code>5 000 Иванов Иван</code>
+• <code>3 500.50 Петрова Мария Сергеевна</code>
+• <code>1 000</code> (ФИО будет "Не указано")
 
 <b>Удаление чека:</b>
 <code>/del [ID чека]</code>

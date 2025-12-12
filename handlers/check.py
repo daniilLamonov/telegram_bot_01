@@ -240,6 +240,11 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
             current_bot_msg=bot_msg.message_id,
             current_file=current_file,
             total_files=total_files,
+            last_prompt_time=datetime.now(),
+            reminder_task=reminder_task,
+        )
+        asyncio.create_task(
+            send_reminder_after_timeout(bot, chat_id, state, bot_msg.message_id)
         )
 
     except Exception as e:
@@ -249,12 +254,42 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         await process_next_in_queue(bot, chat_id, state)
 
 
+async def send_reminder_after_timeout(bot, chat_id, state: FSMContext, original_msg_id: int):
+    await asyncio.sleep(60)
+
+    data = await state.get_data()
+    current_bot_msg = data.get("current_bot_msg")
+
+    if current_bot_msg != original_msg_id:
+        return
+
+    current_state = await state.get_state()
+    if current_state != CheckStates.waiting_for_amount.state:
+        return
+
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="⏰ <b>Напоминание</b>\n\n"
+                 "Вы ещё не указали сумму и ФИО для чека.\n\n"
+                 "Напишите в формате:\n"
+                 "• <code>сумма ФИО</code>\n"
+                 "• <code>сумма</code> (если ФИО не указано)\n\n"
+                 "Или нажмите кнопки ниже, чтобы пропустить/отменить.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"Ошибка отправки напоминания: {e}")
 # ============= ПОЛУЧЕНИЕ ОТВЕТА =============
 
 
 @router.message(CheckStates.waiting_for_amount, F.text)
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
+    data = await state.get_data()
+    reminder_task = data.get("reminder_task")
+    if reminder_task and not reminder_task.done():
+        reminder_task.cancel()
     text = message.text.strip()
     match = re.search(
         r'^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$',

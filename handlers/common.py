@@ -33,10 +33,10 @@ async def cmd_bal(message: Message):
 
     await message.answer(
         (
-            f'💰Баланс "{contractor}"\n'
-            f"      {balance_rub:.2f} ₽\n"
-            f"      {balance_usdt:.2f} $\n"
-            f"      Комиссия: {commission}%"
-        ),
+            f'Баланс "{contractor}"\n'
+            f"{balance_rub:.2f} ₽\n"
+            f"{balance_usdt:,2f} $\n"
+            f"Комиссия: {commission}%"
+        ).replace('.', ','),
         reply_markup=get_delete_keyboard(),
     )

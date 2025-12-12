@@ -30,7 +30,7 @@ async def cmd_payr(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
@@ -40,11 +40,11 @@ async def cmd_payr(message: Message):
 
         if balance_rub < amount:
             await temp_msg(
-                message,
+                message,(
                 f"❌ Недостаточно средств\n"
-                f"Требуется: {amount:.2f} ₽\n"
-                f"Баланс чата: {balance_rub:.2f} ₽",
-            )
+                f"Требуется: {amount:,2f} ₽\n"
+                f"Баланс чата: {balance_rub:,2f} ₽"
+            ).replace('.', ','))
             return
 
         new_balance_rub = balance_rub - amount
@@ -53,7 +53,7 @@ async def cmd_payr(message: Message):
         await log_operation(chat_id, user_id, username, "выплата_руб", amount, "RUB")
 
         await message.answer(
-            f"💸 Выплата {amount} ₽ выполнена\n" f"Баланс {new_balance_rub} ₽",
+            f"Выплата {amount} ₽ выполнена\n" f"Баланс {new_balance_rub} ₽",
             reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):
@@ -77,7 +77,7 @@ async def cmd_pays(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
@@ -87,11 +87,11 @@ async def cmd_pays(message: Message):
 
         if balance_usdt < amount:
             await temp_msg(
-                message,
-                f"❌ Недостаточно средств\n"
-                f"Требуется: {amount:.2f} USDT\n"
-                f"Баланс чата: {balance_usdt:.2f} USDT",
-            )
+                message,(
+                    f"❌ Недостаточно средств\n"
+                    f"Требуется: {amount:,2f} USDT\n"
+                    f"Баланс чата: {balance_usdt:,2f} USDT"
+                    ).replace('.', ','))
             return
 
         new_balance_usdt = balance_usdt - amount
@@ -100,7 +100,7 @@ async def cmd_pays(message: Message):
         await log_operation(chat_id, user_id, username, "выплата_usdt", amount, "USDT")
 
         await message.answer(
-            f"💸 Выплата {amount} USDT выполнена\n" f"Баланс {new_balance_usdt} USDT",
+            f"Выплата {amount} USDT выполнена\n" f"Баланс {new_balance_usdt} USDT",
             reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):

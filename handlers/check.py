@@ -35,21 +35,24 @@ async def cmd_check_with_photo(message: Message):
     await delete_message(message)
     caption = message.caption.strip()
 
-    match = re.search(r"/check\s+(\d+(?:\.\d+)?)\s*(.*)", caption)
-
+    match = re.search(
+        r"/check\s+([\d\s]+(?:\.\d+)?)\s+(.*)",
+        caption
+    )
     if not match:
         await temp_msg(
             message,
             "❌ <b>Неверный формат!</b>\n\n"
             "Формат: <b>/check сумма ФИО</b>\n"
-            "Пример: /check 1000 Иванов Иван Иванович\n"
-            "Или: /check 1000 0 (если ФИО не указано)",
+            "Пример: /check 5 000 Иванов Иван Иванович\n"
+            "Или: /check 5 000 (если ФИО не указано)",
             parse_mode="HTML",
         )
         return
 
     try:
-        amount = float(match.group(1))
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount = float(amount_str)
         payer_info = match.group(2).strip()
 
         if payer_info == "0" or not payer_info:
@@ -160,13 +163,6 @@ async def start_processing_after_delay(bot, chat_id, state: FSMContext):
     await asyncio.sleep(1)
 
     data = await state.get_data()
-    # last_file_time = data.get("last_file_time")
-    #
-    # if last_file_time:
-    #     time_since_last = (datetime.now() - last_file_time).total_seconds()
-    #
-    #     if time_since_last < 2:
-    #         await asyncio.sleep(2 - time_since_last + 0.1)
 
     try:
         initial_msg_id = data.get("initial_msg_id")
@@ -175,7 +171,6 @@ async def start_processing_after_delay(bot, chat_id, state: FSMContext):
     except Exception:
         pass
 
-    # Начинаем обработку
     await state.update_data(
         processing=True, waiting_for_more=False, initial_msg_id=None
     )
@@ -216,7 +211,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         f"💰 Напишите сумму и ФИО:\n"
         f"• <code>сумма ФИО</code>\n"
         f"• <code>сумма</code> (если ФИО не указано)\n\n"
-        f"Пример: <code>1000 Иванов Иван</code> или <code>1000</code>"
+        f"Пример: <code>5 000 Иванов Иван</code> или <code>1000</code>"
     )
 
     try:
@@ -261,22 +256,24 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
     text = message.text.strip()
-    match = re.match(r"^(\d+(?:\.\d+)?)(?:\s+(.*))?$", text)
-
+    match = re.search(
+        r"([\d\s]+(?:\.\d+)?)\s+(.*)",
+        text
+    )
     if not match:
         await temp_msg(
             message,
             "❌ <b>Неверный формат!</b>\n\n"
             "Напишите:<code>сумма ФИО</code>\n"
             "Или просто:<code>сумма</code> (если ФИО не указано)\n"
-            "Пример:<code>1000 Иванов Иван</code> или <code>1000</code>",
+            "Пример:<code>5 000 Иванов Иван</code> или <code>5 000</code>",
             parse_mode="HTML",
         )
         return
     try:
-        amount = float(match.group(1))
-        payer_info = match.group(2) if match.group(2) else ""
-        payer_info = payer_info.strip()
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount = float(amount_str)
+        payer_info = match.group(2)
 
         if not payer_info or payer_info == "0":
             payer_info = "Не указано"
@@ -459,8 +456,8 @@ async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
 @router.message(CheckStates.waiting_for_file, F.text)
 async def wrong_file_type(message: Message, state: FSMContext):
     await delete_message(message)
-    await temp_msg(message, "❌ Ожидается фото или документ", parse_mode="HTML")
     await state.clear()
+    await temp_msg(message, "❌ Ожидается фото или документ", parse_mode="HTML")
 
 @router.message(CheckStates.waiting_for_amount, F.photo | F.document)
 async def handle_extra_photo(message: Message, state: FSMContext):

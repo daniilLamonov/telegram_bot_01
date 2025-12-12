@@ -27,7 +27,7 @@ async def cmd_gets(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
@@ -67,7 +67,7 @@ async def cmd_get(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id

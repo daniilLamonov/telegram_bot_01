@@ -42,8 +42,8 @@ async def cmd_payr(message: Message):
             await temp_msg(
                 message,(
                 f"❌ Недостаточно средств\n"
-                f"Требуется: {amount:,2f} ₽\n"
-                f"Баланс чата: {balance_rub:,2f} ₽"
+                f"Требуется: {amount:.2f} ₽\n"
+                f"Баланс чата: {balance_rub:.2f} ₽"
             ).replace('.', ','))
             return
 
@@ -89,8 +89,8 @@ async def cmd_pays(message: Message):
             await temp_msg(
                 message,(
                     f"❌ Недостаточно средств\n"
-                    f"Требуется: {amount:,2f} USDT\n"
-                    f"Баланс чата: {balance_usdt:,2f} USDT"
+                    f"Требуется: {amount:.2f} USDT\n"
+                    f"Баланс чата: {balance_usdt:.2f} USDT"
                     ).replace('.', ','))
             return
 

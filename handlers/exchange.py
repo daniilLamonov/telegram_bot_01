@@ -56,14 +56,14 @@ async def cmd_ch(message: Message):
                 "❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
             )
             return
+        amount_usdt = amount_rub / rate
 
-        amount_after_commission = await calculate_commission(
-            chat_id, amount_rub, user_id, username
+        amount_after_commission, commission_amount = await calculate_commission(
+            chat_id, amount_usdt, user_id, username
         )
 
-        amount_usdt = amount_after_commission / rate
         new_balance_rub = balance_rub - amount_rub
-        new_balance_usdt = balance_usdt + amount_usdt
+        new_balance_usdt = balance_usdt + amount_after_commission
 
         await update_balance(chat_id, new_balance_rub, new_balance_usdt)
 
@@ -79,18 +79,20 @@ async def cmd_ch(message: Message):
         )
 
         await message.answer(
-            f"💱 Обмен выполнен\n"
-            f"Было списано {amount_rub} руб\n"
-            f"По курсу {rate}\n"
+            (f"Обмен выполнен ✅\n"
+            f"{amount_rub:.2f} ₽ списано \n"
+            f"{rate} курс\n"
+            f"{commission_amount:.2f}$ комиссия в чате (4%)"
+            f"{amount_usdt:.2f}$ пополнен баланс").replace(".", ",")
         )
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректные значения")
 
 
-async def calculate_commission(chat_id, amount_rub, user_id, username):
+async def calculate_commission(chat_id, amount_usdt, user_id, username):
     commission = await get_commission(chat_id)
-    commission_amount = amount_rub * (commission / 100)
-    amount_after_commission = amount_rub - commission_amount
+    commission_amount = amount_usdt * (commission / 100)
+    amount_after_commission = amount_usdt - commission_amount
 
     await log_operation(
         chat_id,
@@ -98,6 +100,6 @@ async def calculate_commission(chat_id, amount_rub, user_id, username):
         username,
         "комиссия",
         commission_amount,
-        "RUB",
+        "USDT",
     )
-    return amount_after_commission
+    return amount_after_commission, commission_amount

@@ -240,12 +240,12 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
             current_bot_msg=bot_msg.message_id,
             current_file=current_file,
             total_files=total_files,
-            last_prompt_time=datetime.now(),
-            reminder_task=reminder_task,
+            # last_prompt_time=datetime.now(),
+            # reminder_task=reminder_task,
         )
-        asyncio.create_task(
-            send_reminder_after_timeout(bot, chat_id, state, bot_msg.message_id)
-        )
+        # asyncio.create_task(
+        #     send_reminder_after_timeout(bot, chat_id, state, bot_msg.message_id)
+        # )
 
     except Exception as e:
         print(f"Ошибка отправки: {e}")
@@ -286,10 +286,10 @@ async def send_reminder_after_timeout(bot, chat_id, state: FSMContext, original_
 @router.message(CheckStates.waiting_for_amount, F.text)
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
-    data = await state.get_data()
-    reminder_task = data.get("reminder_task")
-    if reminder_task and not reminder_task.done():
-        reminder_task.cancel()
+    # data = await state.get_data()
+    # reminder_task = data.get("reminder_task")
+    # if reminder_task and not reminder_task.done():
+    #     reminder_task.cancel()
     text = message.text.strip()
     match = re.search(
         r'^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$',
@@ -309,10 +309,8 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
 
-        # ФИО (может быть None)
         payer_info = match.group(2).strip() if match.group(2) else None
 
-        # Валидация
         if amount <= 0:
             await temp_msg(message, "❌ Сумма должна быть больше нуля!")
             return

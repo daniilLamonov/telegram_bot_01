@@ -29,7 +29,7 @@ async def cmd_ch(message: Message):
             "Примеры:\n"
             "• /ch 95 5 000 000\n"
             "• /ch 95.5 1 000 000\n"
-            "• /ch 100 500000",
+            "• /ch 100 500 000",
             parse_mode="HTML"
         )
         return

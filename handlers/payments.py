@@ -21,7 +21,7 @@ async def cmd_payr(message: Message):
         return
 
     match = re.search(
-        r'/payr\s+(\d+(?:\.\d+)?)\s+',
+        r'/payr\s+([\d\s.,]+)',
         message.text
     )
 
@@ -68,7 +68,7 @@ async def cmd_pays(message: Message):
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
     match = re.search(
-        r'/pays\s+(\d+(?:\.\d+)?)\s+',
+        r'/pays\s+([\d\s.,]+)',
         message.text
     )
 

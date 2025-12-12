@@ -19,7 +19,7 @@ async def cmd_gets(message: Message):
         return
 
     match = re.search(
-        r'/gets\s+(\d+(?:\.\d+)?)\s+',
+        r'/gets\s+([\d\s.,]+)',
         message.text
     )
     if not match.groups():
@@ -59,7 +59,7 @@ async def cmd_get(message: Message):
         await temp_msg(message, "❌ Эта команда доступна только администраторам")
         return
     match = re.search(
-        r'/get\s+(\d+(?:\.\d+)?)\s+',
+        r'/get\s+([\d\s.,]+)',
         message.text
     )
     if not match:

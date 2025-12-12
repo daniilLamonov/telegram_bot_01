@@ -28,7 +28,7 @@ async def cmd_ch(message: Message):
             "Формат: <b>/ch курс сумма</b>\n\n"
             "Примеры:\n"
             "• /ch 95 5 000 000\n"
-            "• /ch 95.5 1 000 000\n"
+            "• /ch 95,5 1 000 000\n"
             "• /ch 100 500 000",
             parse_mode="HTML"
         )
@@ -79,10 +79,10 @@ async def cmd_ch(message: Message):
         )
 
         await message.answer(
-            (f"Обмен выполнен ✅\n"
+            (f"Обмен выполнен ✅\n\n"
             f"{amount_rub:.2f} ₽ списано \n"
             f"{rate} курс\n"
-            f"{commission_amount:.2f}$ комиссия в чате (4%)"
+            f"{commission_amount:.2f}$ комиссия в чате ({rate}%)\n"
             f"{amount_after_commission:.2f}$ пополнен баланс").replace(".", ",")
         )
     except (ValueError, IndexError):

@@ -51,7 +51,7 @@ async def cmd_check_with_photo(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
         payer_info = match.group(2).strip()
 

@@ -35,7 +35,7 @@ async def cmd_ch(message: Message):
         return
 
     try:
-        rate = float(match.group(1))
+        rate = float(match.group(1).replace(',', '.'))
 
         amount_str = match.group(2).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount_rub = float(amount_str)

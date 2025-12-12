@@ -23,7 +23,7 @@ async def cmd_new(message: Message):
         await temp_msg(message, "Использование: /new <процент>")
         return
     try:
-        percent = float(args[0])
+        percent = float(args[0].replace(',', '.'))
         chat_id = message.chat.id
 
         is_set = await set_commission(chat_id, percent)
@@ -31,7 +31,7 @@ async def cmd_new(message: Message):
         if not is_set:
             await temp_msg("Чат не инициализирован")
 
-        await temp_msg(message, f"✅ Комиссия при обмене установлена: {percent}%\n")
+        await temp_msg(message, f"✅ Комиссия при обмене установлена: {percent:.2f}%\n".replace('.', ','))
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректный процент")
 

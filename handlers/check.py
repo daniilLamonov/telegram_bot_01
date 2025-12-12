@@ -6,7 +6,7 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
@@ -701,14 +701,14 @@ async def process_delete_confirmation(callback: CallbackQuery):
 
     if result["success"]:
         await callback.message.edit_text(
-            f"✅ Операция удалена успешно!\n\n"
+            (f"✅ Операция удалена успешно!\n\n"
             f"ID: {operation_id}\n"
             f"Чат ID: {operation_chat_id}\n"
             f'Тип: {result["operation"]["operation_type"]}\n'
             f'Сумма: {result["operation"]["amount"]:.2f} {result["operation"]["currency"]}\n\n'
             f"💰 Новый баланс чата:\n"
             f'₽: {result["new_balance"]["rub"]:.2f}\n'
-            f'USDT: {result["new_balance"]["usdt"]:.2f}',
+            f'USDT: {result["new_balance"]["usdt"]:.2f}').replace('.', ','),
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )

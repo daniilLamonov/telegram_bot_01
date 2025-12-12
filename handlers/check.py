@@ -257,7 +257,7 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
     text = message.text.strip()
     match = re.search(
-        r"([\d\s]+(?:\.\d+)?)\s+(.*)",
+        r'^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$',
         text
     )
     if not match:
@@ -271,11 +271,18 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         )
         return
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '')
+        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
         amount = float(amount_str)
-        payer_info = match.group(2)
 
-        if not payer_info or payer_info == "0":
+        # ФИО (может быть None)
+        payer_info = match.group(2).strip() if match.group(2) else None
+
+        # Валидация
+        if amount <= 0:
+            await temp_msg(message, "❌ Сумма должна быть больше нуля!")
+            return
+
+        if not payer_info:
             payer_info = "Не указано"
 
         if amount <= 0:

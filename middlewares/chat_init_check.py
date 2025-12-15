@@ -34,7 +34,7 @@ class ChatInitMiddleware(BaseMiddleware):
         else:
             return await handler(event, data)
 
-        is_admin = await UserRepo.is_admin(chat_id)
+        is_admin = await UserRepo.is_admin(user_id)
 
         if chat_type == "private":
             await temp_msg(message,

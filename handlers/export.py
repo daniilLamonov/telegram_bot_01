@@ -62,6 +62,7 @@ async def cmd_export_all(message: Message):
     if message.from_user.id not in SUPER_ADMIN_ID:
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
+
     await delete_message(message)
     start_date, end_date, err = parse_date_period(message.text, "/exportall")
     if err:

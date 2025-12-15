@@ -8,29 +8,26 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
-from config import settings
-from database.queries import get_checks_by_date, get_contractor_name, get_history
+from database.repositories import ChatRepo, OperationRepo
+from filters.admin import IsAdminFilter
 from states import ReconciliationStates
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name='reconciliation')
 
-@router.message(Command("history", "h"))
+@router.message(Command("history", "h"), IsAdminFilter())
 async def cmd_h(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     chat_id = message.chat.id
 
-    history = await get_history(chat_id)
+    history = await OperationRepo.get_history(chat_id)
 
     if not history:
         await temp_msg(message, "📜 История операций пуста")
         return
 
-    contractor = await get_contractor_name(chat_id)
+    contractor = await ChatRepo.get_contractor_name(chat_id)
     msg = f"📜 Последние 10 операций\nКонтрагент: {contractor}\n\n"
 
     for op in history:
@@ -50,7 +47,6 @@ async def cmd_h(message: Message):
 
 @router.message(Command("sv"))
 async def cmd_reconciliation(message: Message, state: FSMContext):
-    """Команда сверки чеков"""
     await delete_message(message)
 
     builder = InlineKeyboardBuilder()
@@ -86,7 +82,6 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "sv_today")
 async def sv_today(callback: CallbackQuery, state: FSMContext):
-    """Сверка за сегодня"""
     await callback.answer("📅 Загрузка чеков за сегодня...")
     data = await state.get_data()
     sv_msg_id = data.get('sv_msg_id')
@@ -138,7 +133,6 @@ async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "sv_custom")
 async def sv_custom(callback: CallbackQuery, state: FSMContext):
-    """Ввод своей даты"""
     await callback.answer()
 
     data = await state.get_data()
@@ -233,10 +227,8 @@ async def process_custom_date(message: Message, state: FSMContext):
 
 async def show_checks_for_period(message: Message, chat_id: int, start_date, end_date, period_name: str,
                                  state: FSMContext):
-    """Показать чеки за период"""
-
-    checks = await get_checks_by_date(chat_id, start_date, end_date)
-    contractor_name = await get_contractor_name(chat_id)
+    checks = await OperationRepo.get_checks_by_date(chat_id, start_date, end_date)
+    contractor_name = await ChatRepo.get_contractor_name(chat_id)
 
     if not checks:
         await state.clear()
@@ -249,13 +241,10 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
         )
         return
 
-    # Подсчет суммы
     total_amount = sum(check['amount'] for check in checks)
 
-    # Формирование списка чеков
     checks_list = []
     for idx, check in enumerate(checks, 1):
-        # Извлекаем плательщика из description
         desc = check['description']
         payer_match = re.search(r'Плательщик: ([^.]+)', desc)
         payer = payer_match.group(1) if payer_match else "Не указано"
@@ -280,9 +269,7 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
         f"<i>Для просмотра чека:</i> <code>/hcheck ID</code>"
     )
 
-    # Если текст слишком длинный - разбиваем на части
     if len(result_text) > 4096:
-        # Отправляем заголовок
         header = (
             f"📊 <b>Сверка чеков</b>\n\n"
             f"📅 Период: <b>{period_name}</b>\n"
@@ -292,7 +279,6 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
         )
         await message.answer(header, parse_mode='HTML', reply_markup=get_delete_keyboard())
 
-        # Разбиваем чеки на части
         chunk_size = 10
         for i in range(0, len(checks), chunk_size):
             chunk = checks[i:i + chunk_size]
@@ -318,7 +304,6 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
 
 @router.callback_query(F.data == "sv_cancel")
 async def sv_cancel(callback: CallbackQuery, state: FSMContext):
-    """Отмена сверки"""
     await callback.answer("❌ Отменено")
 
     try:

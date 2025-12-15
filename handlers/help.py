@@ -9,6 +9,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
+from database.repositories import UserRepo
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
@@ -59,7 +60,7 @@ async def cmd_start(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await delete_message(message)
-    is_admin = message.from_user.id in settings.ADMIN_IDS
+    is_admin = await UserRepo.is_admin(message.from_user.id)
     if is_admin:
         await message.answer(
             get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"

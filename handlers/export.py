@@ -4,8 +4,9 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, Message
 
-from config import settings
-from database.queries import export_to_excel, get_contractor_name
+from database.repositories import ChatRepo
+from filters.admin import IsAdminFilter
+from utils.excel import export_to_excel
 from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -13,12 +14,9 @@ from utils.keyboards import get_delete_keyboard
 router = Router(name="export")
 
 
-@router.message(Command("export"))
+@router.message(Command("export"), IsAdminFilter())
 async def cmd_export(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     chat_id = message.chat.id
     start_date, end_date, err = parse_date_period(message.text, "/export")
     if err:
@@ -37,7 +35,7 @@ async def cmd_export(message: Message):
         buffer = await export_to_excel(
             chat_id=chat_id, start_date=start_date, end_date=end_date
         )
-        contractor = await get_contractor_name(chat_id)
+        contractor = await ChatRepo.get_contractor_name(chat_id)
 
         filename = (
             f"report_{contractor}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -57,13 +55,9 @@ async def cmd_export(message: Message):
         await message.answer(f"❌ Ошибка при создании отчета: {e}")
 
 
-@router.message(Command("exportall"))
+@router.message(Command("export_all"), IsAdminFilter())
 async def cmd_export_all(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
-
     start_date, end_date, err = parse_date_period(message.text, "/exportall")
     if err:
         await temp_msg(message, err)

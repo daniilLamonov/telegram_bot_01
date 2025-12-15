@@ -6,18 +6,8 @@ from aiogram.types import BotCommand, BotCommandScopeDefault
 from middlewares.chat_init_check import ChatInitMiddleware
 from config import settings
 from database.connection import init_db, close_db
-from handlers import (
-    common_router,
-    balance_up_router,
-    payments_router,
-    check_router,
-    exchange_router,
-    admin_router,
-    help_router,
-    export_router,
-    callbacks_router,
-    history_router,
-)
+from handlers import router
+from middlewares.register_user import RegisterUserMiddleware
 
 
 async def set_bot_commands(bot: Bot):
@@ -34,24 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
+    await init_db()
+
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value())
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
+    dp.message.middleware(RegisterUserMiddleware())
+    dp.callback_query.middleware(RegisterUserMiddleware())
     dp.message.middleware(ChatInitMiddleware())
     dp.callback_query.middleware(ChatInitMiddleware())
 
 
-    dp.include_router(callbacks_router)
-    dp.include_router(check_router)
-    dp.include_router(common_router)
-    dp.include_router(balance_up_router)
-    dp.include_router(payments_router)
-    dp.include_router(exchange_router)
-    dp.include_router(help_router)
-    dp.include_router(export_router)
-    dp.include_router(history_router)
-    dp.include_router(admin_router)
+    dp.include_router(router)
 
     await set_bot_commands(bot)
 

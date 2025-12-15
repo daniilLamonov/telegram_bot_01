@@ -4,19 +4,16 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import settings
-from database.queries import get_balance, log_operation, update_balance
+from database.repositories import ChatRepo, OperationRepo
+from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="balance_up")
 
 
-@router.message(Command("gets"))
+@router.message(Command("gets"), IsAdminFilter())
 async def cmd_gets(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
 
     match = re.search(
         r'/gets\s+([\d\s.,]+)',
@@ -33,11 +30,11 @@ async def cmd_gets(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await get_balance(chat_id)
+        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
         new_balance_usdt = balance_usdt + amount
-        await update_balance(chat_id, balance_rub, new_balance_usdt)
+        await ChatRepo.update_balance(chat_id, balance_rub, new_balance_usdt)
 
-        await log_operation(
+        await OperationRepo.log_operation(
             chat_id,
             user_id,
             username,
@@ -52,12 +49,9 @@ async def cmd_gets(message: Message):
         await temp_msg(message, "Ошибка: введите корректную сумму")
 
 
-@router.message(Command("get"))
+@router.message(Command("get"), IsAdminFilter())
 async def cmd_get(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     match = re.search(
         r'/get\s+([\d\s.,]+)',
         message.text
@@ -73,11 +67,11 @@ async def cmd_get(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await get_balance(chat_id)
+        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
         new_balance_rub = balance_rub + amount
-        await update_balance(chat_id, new_balance_rub, balance_usdt)
+        await ChatRepo.get_balance(chat_id, new_balance_rub, balance_usdt)
 
-        await log_operation(
+        await OperationRepo.log_operation(
             chat_id,
             user_id,
             username,

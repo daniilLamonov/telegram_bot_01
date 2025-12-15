@@ -1,23 +1,19 @@
 import re
 
-from database.queries import initialize_chat, get_chat_info, set_commission
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import settings
+from database.repositories import ChatRepo
+from filters.admin import IsAdminFilter
 
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="admin")
 
-
-@router.message(Command("new"))
+@router.message(Command("new"), IsAdminFilter())
 async def cmd_new(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     args = message.text.split()[1:]
     if not args:
         await temp_msg(message, "Использование: /new <процент>")
@@ -26,7 +22,7 @@ async def cmd_new(message: Message):
         percent = float(args[0].replace(',', '.'))
         chat_id = message.chat.id
 
-        is_set = await set_commission(chat_id, percent)
+        is_set = await ChatRepo.set_commission(chat_id, percent)
 
         if not is_set:
             await temp_msg("Чат не инициализирован")
@@ -36,14 +32,11 @@ async def cmd_new(message: Message):
         await temp_msg(message, "Ошибка: введите корректный процент")
 
 
-@router.message(Command("init"))
+@router.message(Command("init"), IsAdminFilter())
 async def cmd_init(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
 
-    chat_info = await get_chat_info(message.chat.id)
+    chat_info = await ChatRepo.get_chat(message.chat.id)
 
     if chat_info:
         await temp_msg(message,
@@ -73,7 +66,7 @@ async def cmd_init(message: Message):
         """)
         return
 
-    success = await initialize_chat(
+    success = await ChatRepo.initialize_chat(
         chat_id=message.chat.id,
         chat_title=message.chat.title,
         chat_type=message.chat.type,
@@ -93,14 +86,10 @@ async def cmd_init(message: Message):
         await temp_msg(message, "❌ Ошибка при инициализации чата")
 
 
-@router.message(Command("reinit"))
+@router.message(Command("reinit"), IsAdminFilter())
 async def cmd_reinit(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
-
-    chat_info = await get_chat_info(message.chat.id)
+    chat_info = await ChatRepo.get_chat(message.chat.id)
 
     if not chat_info:
         await temp_msg(message,
@@ -121,7 +110,7 @@ async def cmd_reinit(message: Message):
         return
     contractor_name = match.group(1).strip()
 
-    success = await initialize_chat(
+    success = await ChatRepo.initialize_chat(
         chat_id=message.chat.id,
         chat_title=message.chat.title,
         chat_type=message.chat.type,

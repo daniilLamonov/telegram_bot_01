@@ -4,19 +4,16 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import settings
-from database.queries import get_balance, get_commission, log_operation, update_balance
+from database.repositories import ChatRepo, OperationRepo
+from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="exchange")
 
 
-@router.message(Command("ch"))
+@router.message(Command("ch"), IsAdminFilter())
 async def cmd_ch(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     match = re.search(
         r'/ch\s+(\d+(?:\.\d+)?)\s+([\d\s.,]+)',
         message.text
@@ -48,7 +45,7 @@ async def cmd_ch(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await get_balance(chat_id)
+        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
 
         if balance_rub < amount_rub:
             await temp_msg(
@@ -65,9 +62,9 @@ async def cmd_ch(message: Message):
         new_balance_rub = balance_rub - amount_rub
         new_balance_usdt = balance_usdt + amount_after_commission
 
-        await update_balance(chat_id, new_balance_rub, new_balance_usdt)
+        await ChatRepo.update_balance(chat_id, new_balance_rub, new_balance_usdt)
 
-        await log_operation(
+        await OperationRepo.log_operation(
             chat_id,
             user_id,
             username,
@@ -90,11 +87,11 @@ async def cmd_ch(message: Message):
 
 
 async def calculate_commission(chat_id, amount_usdt, user_id, username):
-    commission = await get_commission(chat_id)
+    commission = await ChatRepo.get_commission(chat_id)
     commission_amount = amount_usdt * (commission / 100)
     amount_after_commission = amount_usdt - commission_amount
 
-    await log_operation(
+    await OperationRepo.log_operation(
         chat_id,
         user_id,
         username,

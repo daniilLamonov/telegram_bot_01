@@ -4,21 +4,17 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import settings
-from database.queries import get_balance, log_operation, update_balance
+from database.repositories import ChatRepo, OperationRepo
+from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="payments")
 
 
-@router.message(Command("payr"))
+@router.message(Command("payr"), IsAdminFilter())
 async def cmd_payr(message: Message):
     await delete_message(message)
-
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
 
     match = re.search(
         r'/payr\s+([\d\s.,]+)',
@@ -36,7 +32,7 @@ async def cmd_payr(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await get_balance(chat_id)
+        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
 
         if balance_rub < amount:
             await temp_msg(
@@ -48,9 +44,15 @@ async def cmd_payr(message: Message):
             return
 
         new_balance_rub = balance_rub - amount
-        await update_balance(chat_id, new_balance_rub, balance_usdt)
+        await ChatRepo.update_balance(chat_id, new_balance_rub, balance_usdt)
 
-        await log_operation(chat_id, user_id, username, "выплата_руб", amount, "RUB")
+        await OperationRepo.log_operation(
+            chat_id,
+            user_id,
+            username,
+            "выплата_руб",
+            amount,
+            "RUB")
 
         await message.answer(
             f"Выплата {amount:.2f} ₽ выполнена\n" f"Баланс {new_balance_rub:.2f} ₽".replace('.', ','),
@@ -60,13 +62,10 @@ async def cmd_payr(message: Message):
         await temp_msg(message, "Ошибка: введите корректную сумму")
 
 
-@router.message(Command("pays"))
+@router.message(Command("pays"), IsAdminFilter())
 async def cmd_pays(message: Message):
     await delete_message(message)
 
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
     match = re.search(
         r'/pays\s+([\d\s.,]+)',
         message.text
@@ -83,7 +82,7 @@ async def cmd_pays(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await get_balance(chat_id)
+        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
 
         if balance_usdt < amount:
             await temp_msg(
@@ -95,9 +94,15 @@ async def cmd_pays(message: Message):
             return
 
         new_balance_usdt = balance_usdt - amount
-        await update_balance(chat_id, balance_rub, new_balance_usdt)
+        await ChatRepo.update_balance(chat_id, balance_rub, new_balance_usdt)
 
-        await log_operation(chat_id, user_id, username, "выплата_usdt", amount, "USDT")
+        await OperationRepo.log_operation(
+            chat_id,
+            user_id,
+            username,
+            "выплата_usdt",
+            amount,
+            "USDT")
 
         await message.answer(
             f"Выплата {amount:.2f} USDT выполнена\n" f"Баланс {new_balance_usdt:.2f} USDT".replace('.', ','),

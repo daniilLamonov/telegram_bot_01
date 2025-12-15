@@ -1,11 +1,9 @@
-from .base import BaseRepository
-from .chat_repo import ChatRepository
-from .operation_repo import OperationRepository
-from .user_repo import UserRepository
+from .chat_repo import ChatRepo
+from .operation_repo import OperationRepo
+from .user_repo import UserRepo
 
 __all__ = [
-    'BaseRepository',
-    'ChatRepository',
-    'OperationRepository',
-    'UserRepository'
+    'ChatRepo',
+    'OperationRepo',
+    'UserRepo'
 ]

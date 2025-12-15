@@ -15,5 +15,12 @@
       <jdbc-url>jdbc:postgresql://localhost:5432/telegram_bot</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="data@postgres" uuid="9e6d7053-896e-40ef-aa2c-38faf6392501">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://postgres:5432/data</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

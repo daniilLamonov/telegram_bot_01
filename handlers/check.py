@@ -6,17 +6,13 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
 from config import settings
-from database.queries import (
-    add_to_balance,
-    get_check,
-    get_contractor_name,
-    log_operation, delete_operation_with_balance_correction, get_operation_details, update_balance,
-)
+from database.repositories import ChatRepo, OperationRepo
+from filters.admin import IsAdminFilter
 from states import CheckStates
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -327,10 +323,10 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
             await process_next_in_queue(message.bot, chat_id, state)
             return
 
-        await add_to_balance(chat_id, amount)
-        contractor_name = await get_contractor_name(chat_id)
+        await ChatRepo.add_to_balance(chat_id, amount)
+        contractor_name = await ChatRepo.get_contractor_name(chat_id)
 
-        op_id = await log_operation(
+        op_id = await OperationRepo.log_operation(
             chat_id,
             user_id,
             username,
@@ -494,10 +490,10 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         await temp_msg(message, f"❌ Ошибка при сохранении файла: {e}")
         return
 
-    await add_to_balance(chat_id, amount)
-    contractor_name = await get_contractor_name(chat_id)
+    await ChatRepo.add_to_balance(chat_id, amount)
+    contractor_name = await ChatRepo.get_contractor_name(chat_id)
 
-    op_id = await log_operation(
+    op_id = await OperationRepo.log_operation(
         chat_id,
         user_id,
         username,
@@ -540,7 +536,7 @@ async def cmd_history_check(message: Message):
         return
 
     operation_id = args[0]
-    operation = await get_check(operation_id)
+    operation = await OperationRepo.get_check(operation_id)
 
     if not operation:
         await temp_msg(message, "❌ Операция не найдена")
@@ -555,7 +551,7 @@ async def cmd_history_check(message: Message):
 
     filename = filename_match.group(1)
     filepath = os.path.join(FILES_DIR, filename)
-    contractor_name = await get_contractor_name(operation["chat_id"])
+    contractor_name = await ChatRepo.get_contractor_name(operation["chat_id"])
 
     safe_username = hd.quote(operation["username"])
     safe_contractor = hd.quote(contractor_name)
@@ -591,13 +587,9 @@ async def cmd_history_check(message: Message):
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )
-@router.message(Command("delete", "del"))
+@router.message(Command("delete", "del"), IsAdminFilter())
 async def cmd_delete(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.ADMIN_IDS:
-        await temp_msg(message, "❌ Эта команда доступна только администраторам")
-        return
-
     args = message.text.split()[1:]
     if not args:
         await temp_msg(
@@ -611,7 +603,7 @@ async def cmd_delete(message: Message):
 
     operation_id = args[0].strip()
 
-    operation = await get_operation_details(operation_id)
+    operation = await OperationRepo.get_operation(operation_id)
 
     if not operation:
         await temp_msg(message, f"❌ Операция {operation_id} не найдена")
@@ -644,7 +636,7 @@ async def cmd_delete(message: Message):
 async def process_delete_confirmation(callback: CallbackQuery):
     operation_id = callback.data.split(":")[1]
 
-    operation = await get_operation_details(operation_id)
+    operation = await OperationRepo.log_operation(operation_id)
 
     if not operation:
         await callback.answer()
@@ -654,12 +646,17 @@ async def process_delete_confirmation(callback: CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-
+    chat_id = callback.message.chat.id
     operation_chat_id = operation["chat_id"]
+    amount = operation["amount"]
 
-    result = await delete_operation_with_balance_correction(
-        operation_id, operation_chat_id
-    )
+    balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
+
+    balance_rub = balance_rub - int(amount)
+
+    result = await OperationRepo.delete_operation(operation_chat_id)
+
+    await ChatRepo.update_balance(chat_id, balance_rub, balance_usdt)
 
     if result["success"]:
         await callback.message.edit_text(

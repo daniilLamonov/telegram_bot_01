@@ -2,7 +2,7 @@ from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
 from config import settings
-from database.queries import is_chat_initialized
+from database.repositories import ChatRepo
 from utils.helpers import temp_msg
 
 
@@ -47,7 +47,7 @@ class ChatInitMiddleware(BaseMiddleware):
         if is_admin and is_admin_command:
             return await handler(event, data)
 
-        if not await is_chat_initialized(chat_id):
+        if not await ChatRepo.is_chat_initialized(chat_id):
             await temp_msg(message,
                 "⚠️ <b>Чат не инициализирован</b>\n\n"
                 "Администратор должен выполнить команду /init",

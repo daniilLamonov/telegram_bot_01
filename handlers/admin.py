@@ -135,22 +135,23 @@ async def cmd_reinit(message: Message):
 @router.message(Command("setadmin"))
 async def cmd_setadmin(message: Message):
     if message.from_user.id not in SUPER_ADMIN_ID:
-        await message.answer("❌ У вас нет прав для этой команды")
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
     if not message.reply_to_message:
-        await temp_msg("⚠️ Ответьте на сообщение пользователя командой /setadmin")
+        await temp_msg(message, "⚠️ Ответьте на сообщение пользователя командой /setadmin")
         return
 
     target_user = message.reply_to_message.from_user
 
     if target_user.is_bot:
-        await temp_msg("❌ Нельзя назначить бота админом")
+        await temp_msg(message, "❌ Нельзя назначить бота админом")
         return
 
     await UserRepo.set_admin(target_user.id, is_admin=True)
 
     await temp_msg(
+        message,
         f"✅ Пользователь назначен администратором:\n"
         f"👤 ID: <code>{target_user.id}</code>\n"
         f"📝 Username: @{target_user.username or 'Не указан'}\n"
@@ -162,11 +163,11 @@ async def cmd_setadmin(message: Message):
 @router.message(Command("removeadmin"))
 async def cmd_removeadmin(message: Message):
     if message.from_user.id not in SUPER_ADMIN_ID:
-        await message.answer("❌ У вас нет прав для этой команды")
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
     if not message.reply_to_message:
-        await temp_msg("⚠️ Ответьте на сообщение пользователя командой /removeadmin")
+        await temp_msg(message, "⚠️ Ответьте на сообщение пользователя командой /removeadmin")
         return
 
     target_user = message.reply_to_message.from_user
@@ -174,6 +175,7 @@ async def cmd_removeadmin(message: Message):
     await UserRepo.set_admin(target_user.id, is_admin=False)
 
     await temp_msg(
+        message,
         f"✅ Права администратора сняты:\n"
         f"👤 ID: <code>{target_user.id}</code>\n"
         f"📝 Username: @{target_user.username or 'Не указан'}",

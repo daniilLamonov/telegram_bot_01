@@ -387,6 +387,7 @@ async def show_all_results(bot, chat_id, state: FSMContext):
             f'КА: {result["contractor"]}\n\n'
             f'Для просмотра:<code>/hcheck {result["op_id"]}</code>').replace('.', ','),
             parse_mode="HTML",
+            reply_markup=get_delete_keyboard(),
         )
 
 # ============= КНОПКИ =============
@@ -509,8 +510,7 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
     safe_username = hd.quote(username)
     safe_contractor = hd.quote(contractor_name)
 
-    await temp_msg(
-        message,
+    await message.answer(
         f"✅ Баланс пополнен по чеку ({file_type})\n"
         f"ID:<code>{op_id}</code>\n"
         f"Плательщик: {safe_payer}\n"
@@ -518,8 +518,8 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         f"Внес: @{safe_username}\n"
         f"КА: {safe_contractor}\n\n"
         f"Для просмотра:<code>/hcheck {op_id}</code>",
-        60,
         parse_mode="HTML",
+        reply_markup=get_delete_keyboard(),
     )
 
 

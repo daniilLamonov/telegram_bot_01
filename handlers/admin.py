@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from database.repositories import ChatRepo
+from database.repositories import ChatRepo, UserRepo
 from filters.admin import IsAdminFilter
 
 from utils.helpers import delete_message, temp_msg
@@ -129,3 +129,52 @@ async def cmd_reinit(message: Message):
     else:
         await temp_msg(message, "❌ Ошибка при инициализации чата")
 
+SUPER_ADMIN_ID = settings.SUPER_ADMIN_ID
+@router.message(Command("setadmin"))
+async def cmd_setadmin(message: Message):
+    """Назначить админа (только для суперадмина)"""
+    if message.from_user.id != SUPER_ADMIN_ID:
+        await message.answer("❌ У вас нет прав для этой команды")
+        return
+
+    if not message.reply_to_message:
+        await temp_msg("⚠️ Ответьте на сообщение пользователя командой /setadmin")
+        return
+
+    target_user = message.reply_to_message.from_user
+
+    if target_user.is_bot:
+        await temp_msg("❌ Нельзя назначить бота админом")
+        return
+
+    await UserRepo.set_admin(target_user.id, is_admin=True)
+
+    await temp_msg(
+        f"✅ Пользователь назначен администратором:\n"
+        f"👤 ID: <code>{target_user.id}</code>\n"
+        f"📝 Username: @{target_user.username or 'Не указан'}\n"
+        f"📛 Имя: {target_user.first_name}",
+        parse_mode="HTML"
+    )
+
+
+@router.message(Command("removeadmin"))
+async def cmd_removeadmin(message: Message):
+    if message.from_user.id != SUPER_ADMIN_ID:
+        await message.answer("❌ У вас нет прав для этой команды")
+        return
+
+    if not message.reply_to_message:
+        await temp_msg("⚠️ Ответьте на сообщение пользователя командой /removeadmin")
+        return
+
+    target_user = message.reply_to_message.from_user
+
+    await UserRepo.set_admin(target_user.id, is_admin=False)
+
+    await temp_msg(
+        f"✅ Права администратора сняты:\n"
+        f"👤 ID: <code>{target_user.id}</code>\n"
+        f"📝 Username: @{target_user.username or 'Не указан'}",
+        parse_mode="HTML"
+    )

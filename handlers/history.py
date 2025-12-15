@@ -162,7 +162,6 @@ async def sv_custom(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ReconciliationStates.waiting_for_date, F.text)
 async def process_custom_date(message: Message, state: FSMContext):
-    """Обработка введенной даты"""
     await delete_message(message)
 
     data = await state.get_data()
@@ -176,7 +175,6 @@ async def process_custom_date(message: Message, state: FSMContext):
 
     text = message.text.strip().lower()
 
-    # Обработка алиасов
     if text in ['сегодня', 'today']:
         target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         period_name = "Сегодня"
@@ -184,7 +182,6 @@ async def process_custom_date(message: Message, state: FSMContext):
         target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
         period_name = "Вчера"
     else:
-        # Парсинг даты
         match = re.match(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$', text)
 
         if not match:
@@ -213,7 +210,6 @@ async def process_custom_date(message: Message, state: FSMContext):
             )
             return
 
-    # Показываем чеки
     next_date = target_date + timedelta(days=1)
     await show_checks_for_period(
         message,

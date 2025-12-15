@@ -20,7 +20,6 @@ class UserRepo(BaseRepository):
             first_name: Optional[str],
             last_name: Optional[str]
     ) -> dict:
-        """Создать или обновить пользователя"""
         row = await cls._fetchrow(
             """
             INSERT INTO users (user_id, username, first_name, last_name)
@@ -47,7 +46,6 @@ class UserRepo(BaseRepository):
 
     @classmethod
     async def set_admin(cls, user_id: int, is_admin: bool = True):
-        """Назначить/снять права админа"""
         await cls._execute(
             "UPDATE users SET is_admin = $1, updated_at = NOW() WHERE user_id = $2",
             is_admin, user_id

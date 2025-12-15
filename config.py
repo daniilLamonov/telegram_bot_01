@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr, Field
@@ -8,7 +9,7 @@ class Settings(BaseSettings):
 
     BOT_TOKEN: SecretStr
 
-    ADMIN_IDS: list[int]
+    SUPER_ADMIN_ID: List[int]
 
     BASE_DIR: Path = Path(__file__).resolve().parent
 

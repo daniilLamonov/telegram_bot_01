@@ -57,7 +57,7 @@ async def cmd_export(message: Message):
         await message.answer(f"❌ Ошибка при создании отчета: {e}")
 
 
-@router.message(Command("export_all"), IsAdminFilter())
+@router.message(Command("exportall"), IsAdminFilter())
 async def cmd_export_all(message: Message):
     if message.from_user.id not in SUPER_ADMIN_ID:
         await temp_msg(message, "❌ У вас нет прав для этой команды")

@@ -4,12 +4,14 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from config import settings
 from database.repositories import ChatRepo, UserRepo
 from filters.admin import IsAdminFilter
 
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="admin")
+SUPER_ADMIN_ID = settings.SUPER_ADMIN_ID
 
 @router.message(Command("new"), IsAdminFilter())
 async def cmd_new(message: Message):
@@ -129,7 +131,7 @@ async def cmd_reinit(message: Message):
     else:
         await temp_msg(message, "❌ Ошибка при инициализации чата")
 
-SUPER_ADMIN_ID = settings.SUPER_ADMIN_ID
+
 @router.message(Command("setadmin"))
 async def cmd_setadmin(message: Message):
     """Назначить админа (только для суперадмина)"""

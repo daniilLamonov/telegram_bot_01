@@ -134,8 +134,7 @@ async def cmd_reinit(message: Message):
 
 @router.message(Command("setadmin"))
 async def cmd_setadmin(message: Message):
-    """Назначить админа (только для суперадмина)"""
-    if message.from_user.id != SUPER_ADMIN_ID:
+    if message.from_user.id not in SUPER_ADMIN_ID:
         await message.answer("❌ У вас нет прав для этой команды")
         return
 
@@ -162,7 +161,7 @@ async def cmd_setadmin(message: Message):
 
 @router.message(Command("removeadmin"))
 async def cmd_removeadmin(message: Message):
-    if message.from_user.id != SUPER_ADMIN_ID:
+    if message.from_user.id not in SUPER_ADMIN_ID:
         await message.answer("❌ У вас нет прав для этой команды")
         return
 

@@ -20,10 +20,9 @@ def get_help_main_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="⚙️ Чеки", callback_data="help_checks"),
-        InlineKeyboardButton(text="📊 Отчеты", callback_data="help_reports")
+        InlineKeyboardButton(text="📊 Отчеты", callback_data="help_reports"),
     )
     builder.row(
-
         InlineKeyboardButton(text="💰 Пополнение", callback_data="help_deposit"),
         InlineKeyboardButton(text="📤 Выплата", callback_data="help_withdraw"),
     )
@@ -34,12 +33,15 @@ def get_help_main_keyboard():
 
     builder.row(InlineKeyboardButton(text="🗑 Удалить", callback_data="delete_message"))
     return builder.as_markup()
+
+
 def get_super_admin_keyboard():
     builder = get_help_main_keyboard()
     builder.row(
         InlineKeyboardButton(text="Super Admin", callback_data="super_settings"),
     )
     return builder.as_markup()
+
 
 def get_help_main_text():
     return """
@@ -52,15 +54,22 @@ def get_help_main_text():
 <i>Выберите категорию для подробной информации ⬇️</i>
 """
 
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await delete_message(message)
-    await temp_msg(message,
-                   (f"👋 <b>Привет, {message.from_user.first_name}!</b>\n\n"
+    await temp_msg(
+        message,
+        (
+            f"👋 <b>Привет, {message.from_user.first_name}!</b>\n\n"
             "Я бот для учёта чеков.\n\n"
             "Выполните команду /init для начала работы.\n"
             "⚠️ Для корректной работы необходимо назначить бота админом чата!!!"
-            "Используйте /help чтобы узнать, что я умею."), parse_mode="HTML")
+            "Используйте /help чтобы узнать, что я умею."
+        ),
+        parse_mode="HTML",
+    )
+
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
@@ -68,16 +77,21 @@ async def cmd_help(message: Message):
     is_admin = await UserRepo.is_admin(message.from_user.id)
     if message.from_user.id in settings.SUPER_ADMIN_ID:
         await message.answer(
-            get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"
+            get_help_main_text(),
+            reply_markup=get_help_main_keyboard(),
+            parse_mode="HTML",
         )
     elif is_admin:
         await message.answer(
-            get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"
+            get_help_main_text(),
+            reply_markup=get_help_main_keyboard(),
+            parse_mode="HTML",
         )
     else:
         await message.answer(
             get_help_main_text(), reply_markup=get_delete_keyboard(), parse_mode="HTML"
         )
+
 
 @router.callback_query(F.data.startswith("help_"))
 async def process_help_callback(callback: CallbackQuery):
@@ -137,7 +151,7 @@ async def process_help_callback(callback: CallbackQuery):
 🆔 ID: [идентификатор]
 👤 Плательщик: [ФИО]
     """,
-    "help_reports": """
+        "help_reports": """
     📊 <b>Отчеты и история</b>
 
 <b>/bal</b> - Текущий баланс чата
@@ -206,13 +220,13 @@ async def process_help_callback(callback: CallbackQuery):
 
 ⚠️ Комиссия применяется ко всем обменам
 """,
- "super_settings": """
+        "super_settings": """
 Только для СУПЕР админов             
 Добавить нового админа - <b>/setadmin</b> + ответом на сообщение
 Удалить админа - <b>/removeadmin</b> + ответом на сообщение
 <b>/exportall [date1] [date2]</b> - Выгрузить Excel
 Полный отчет по всем чатам(КА) (если даты указана, то за период)
-"""
+""",
     }
 
     section_text = help_sections.get(callback.data, "❌ Раздел не найден")

@@ -1,10 +1,10 @@
 from aiogram.fsm.state import State, StatesGroup
 
+
 class CheckStates(StatesGroup):
-    waiting_for_amount = State()      # Ожидание "сумма ФИО"
-    waiting_for_file = State()         # Ожидание фото/файла
+    waiting_for_amount = State()
+    waiting_for_file = State()
 
 
 class ReconciliationStates(StatesGroup):
-    """Состояния для сверки"""
     waiting_for_date = State()

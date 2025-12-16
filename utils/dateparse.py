@@ -1,14 +1,12 @@
 from datetime import datetime
 from typing import Optional, Tuple
 
-def parse_date_period(cmd_text: str, command: str) -> Tuple[Optional[datetime], Optional[datetime], Optional[str]]:
-    """
-    Разбирает текст команды и вытаскивает две даты в формате DD.MM.YYYY.
-    Возвращает (start_date, end_date, error_text).
-    Если дат нет – (None, None, None).
-    """
+
+def parse_date_period(
+    cmd_text: str, command: str
+) -> Tuple[Optional[datetime], Optional[datetime], Optional[str]]:
     args = cmd_text.replace(command, "").strip().split()
-    if len(args) == 0 or args[0] == '@usssdt0_bot':
+    if len(args) == 0 or args[0] == "@usssdt0_bot":
         return None, None, None  # без периода
 
     if len(args) == 1:
@@ -23,4 +21,8 @@ def parse_date_period(cmd_text: str, command: str) -> Tuple[Optional[datetime], 
             return None, None, "❌ Дата начала не может быть позже даты окончания"
         return start_date, end_date, None
     except ValueError:
-        return None, None, "❌ Неверный формат дат. Используй DD.MM.YYYY (например: 11.11.2025 14.11.2025)"
+        return (
+            None,
+            None,
+            "❌ Неверный формат дат. Используй DD.MM.YYYY (например: 11.11.2025 14.11.2025)",
+        )

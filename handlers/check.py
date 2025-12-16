@@ -31,10 +31,7 @@ async def cmd_check_with_photo(message: Message):
     await delete_message(message)
     text = message.caption.strip()
 
-    match = re.search(
-        r"/check\s+([\d\s]+(?:\.\d+)?)\s+(.*)",
-        text
-    )
+    match = re.search(r"/check\s+([\d\s]+(?:\.\d+)?)\s+(.*)", text)
     if not match:
         await temp_msg(
             message,
@@ -47,7 +44,9 @@ async def cmd_check_with_photo(message: Message):
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_str = (
+            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        )
         amount = float(amount_str)
         payer_info = match.group(2).strip()
 
@@ -148,9 +147,7 @@ async def add_to_queue(message: Message, state: FSMContext):
 
     await state.update_data(waiting_for_more=True)
     asyncio.create_task(
-        start_processing_after_delay(
-            message.bot, message.chat.id, state
-        )
+        start_processing_after_delay(message.bot, message.chat.id, state)
     )
 
 
@@ -244,6 +241,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         await state.update_data(queue=queue)
         await process_next_in_queue(bot, chat_id, state)
 
+
 # ============= ПОЛУЧЕНИЕ ОТВЕТА =============
 
 
@@ -251,10 +249,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
     text = message.text.strip()
-    match = re.search(
-        r'^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$',
-        text
-    )
+    match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
     if not match:
         await temp_msg(
             message,
@@ -266,7 +261,9 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         )
         return
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_str = (
+            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        )
         amount = float(amount_str)
 
         payer_info = match.group(2).strip() if match.group(2) else None
@@ -379,16 +376,19 @@ async def show_all_results(bot, chat_id, state: FSMContext):
     for result in results_queue:
         await bot.send_message(
             chat_id=chat_id,
-            text=(f'✅ Баланс пополнен по чеку ({result["file_type"]})\n'
-            f'ID:<code>{result["op_id"]}</code>\n'
-            f'Плательщик: {result["payer"]}\n'
-            f'Сумма: {result["amount"]:.2f} ₽\n'
-            f'Внес: @{result["username"]}\n'
-            f'КА: {result["contractor"]}\n\n'
-            f'Для просмотра:<code>/hcheck {result["op_id"]}</code>').replace('.', ','),
+            text=(
+                f'✅ Баланс пополнен по чеку ({result["file_type"]})\n'
+                f'ID:<code>{result["op_id"]}</code>\n'
+                f'Плательщик: {result["payer"]}\n'
+                f'Сумма: {result["amount"]:.2f} ₽\n'
+                f'Внес: @{result["username"]}\n'
+                f'КА: {result["contractor"]}\n\n'
+                f'Для просмотра:<code>/hcheck {result["op_id"]}</code>'
+            ).replace(".", ","),
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )
+
 
 # ============= КНОПКИ =============
 
@@ -450,6 +450,7 @@ async def wrong_file_type(message: Message, state: FSMContext):
     await delete_message(message)
     await state.clear()
     await temp_msg(message, "❌ Ожидается фото или документ", parse_mode="HTML")
+
 
 @router.message(CheckStates.waiting_for_amount, F.photo | F.document)
 async def handle_extra_photo(message: Message, state: FSMContext):
@@ -565,10 +566,11 @@ async def cmd_history_check(message: Message):
     )
 
     if not os.path.exists(filepath):
-        await message.answer("❌ Файл/фото не найден на сервере\n" + operation_info,
-                             parse_mode="HTML",
-                             reply_markup=get_delete_keyboard(),
-                             )
+        await message.answer(
+            "❌ Файл/фото не найден на сервере\n" + operation_info,
+            parse_mode="HTML",
+            reply_markup=get_delete_keyboard(),
+        )
         return
 
     from aiogram.types import FSInputFile
@@ -587,6 +589,8 @@ async def cmd_history_check(message: Message):
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )
+
+
 @router.message(Command("delete", "del"), IsAdminFilter())
 async def cmd_delete(message: Message):
     await delete_message(message)
@@ -659,13 +663,15 @@ async def process_delete_confirmation(callback: CallbackQuery):
 
     if result["success"]:
         await callback.message.edit_text(
-            (f"✅ Операция удалена успешно!\n\n"
-            f"ID: {operation_id}\n"
-            f"Чат ID: {operation_chat_id}\n"
-            f'Сумма: {amount:.2f}\n\n'
-            f"Новый баланс чата:\n"
-            f'₽: {balance_rub:.2f}\n'
-            f'USDT: {balance_usdt:.2f}').replace('.', ','),
+            (
+                f"✅ Операция удалена успешно!\n\n"
+                f"ID: {operation_id}\n"
+                f"Чат ID: {operation_chat_id}\n"
+                f"Сумма: {amount:.2f}\n\n"
+                f"Новый баланс чата:\n"
+                f"₽: {balance_rub:.2f}\n"
+                f"USDT: {balance_usdt:.2f}"
+            ).replace(".", ","),
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )

@@ -35,7 +35,6 @@ async def main():
     dp.message.middleware(ChatInitMiddleware())
     dp.callback_query.middleware(ChatInitMiddleware())
 
-
     dp.include_router(router)
 
     await set_bot_commands(bot)
@@ -50,8 +49,5 @@ async def main():
         await bot.session.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
-
-
-

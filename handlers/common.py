@@ -17,7 +17,6 @@ class InitStates(StatesGroup):
     waiting_for_name = State()
 
 
-
 @router.message(Command("bal"), IsAdminFilter())
 async def cmd_bal(message: Message):
     await delete_message(message)
@@ -32,6 +31,6 @@ async def cmd_bal(message: Message):
             f"{balance_rub:.2f} ₽\n"
             f"{balance_usdt:.2f} $\n"
             f"Комиссия: {commission}%"
-        ).replace('.', ','),
+        ).replace(".", ","),
         reply_markup=get_delete_keyboard(),
     )

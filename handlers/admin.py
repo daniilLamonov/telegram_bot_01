@@ -12,6 +12,7 @@ from utils.helpers import delete_message, temp_msg
 
 router = Router(name="admin")
 
+
 @router.message(Command("new"), IsAdminFilter())
 async def cmd_new(message: Message):
     await delete_message(message)
@@ -20,7 +21,7 @@ async def cmd_new(message: Message):
         await temp_msg(message, "Использование: /new <процент>")
         return
     try:
-        percent = float(args[0].replace(',', '.'))
+        percent = float(args[0].replace(",", "."))
         chat_id = message.chat.id
 
         is_set = await ChatRepo.set_commission(chat_id, percent)
@@ -28,7 +29,10 @@ async def cmd_new(message: Message):
         if not is_set:
             await temp_msg("Чат не инициализирован")
 
-        await temp_msg(message, f"✅ Комиссия при обмене установлена: {percent:.2f}%\n".replace('.', ','))
+        await temp_msg(
+            message,
+            f"✅ Комиссия при обмене установлена: {percent:.2f}%\n".replace(".", ","),
+        )
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректный процент")
 
@@ -40,31 +44,34 @@ async def cmd_init(message: Message):
     chat_info = await ChatRepo.get_chat(message.chat.id)
 
     if chat_info:
-        await temp_msg(message,
+        await temp_msg(
+            message,
             f"ℹ️ <b>Чат уже инициализирован</b>\n\n"
             f"📝 Контрагент: <b>{chat_info['contractor_name']}</b>\n"
             f"📅 Инициализирован: {chat_info['created_at'].strftime('%d.%m.%Y %H:%M')}\n\n"
             f"Используйте /reinit для повторной инициализации",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
-    match = re.search(r'^/init(?:@\w+)?\s+(.+)', message.text)
+    match = re.search(r"^/init(?:@\w+)?\s+(.+)", message.text)
 
     if not match:
         await temp_msg(
             message,
-            "❌ Требуется ввести название КА.\n"
-            "Пример: <code>/init ABC13 LTD</code>",
+            "❌ Требуется ввести название КА.\n" "Пример: <code>/init ABC13 LTD</code>",
             parse_mode="HTML",
         )
         return
     contractor_name = match.group(1).strip()
 
     if not contractor_name:
-        await temp_msg(message, """
+        await temp_msg(
+            message,
+            """
         ❌ Требуется ввести команду с названием КА\n.
          Пример <code>/init ABC13 </code>
-        """)
+        """,
+        )
         return
 
     success = await ChatRepo.initialize_chat(
@@ -72,16 +79,17 @@ async def cmd_init(message: Message):
         chat_title=message.chat.title,
         chat_type=message.chat.type,
         contractor_name=contractor_name,
-        initialized_by=message.from_user.id
+        initialized_by=message.from_user.id,
     )
 
     if success:
-        await temp_msg(message,
+        await temp_msg(
+            message,
             f"✅ <b>Чат успешно инициализирован!</b>\n\n"
             f"📝 Контрагент: <b>{contractor_name}</b>\n"
             f"🆔 Chat ID: <code>{message.chat.id}</code>\n\n"
             f"Теперь пользователи могут работать с ботом в этом чате.",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
     else:
         await temp_msg(message, "❌ Ошибка при инициализации чата")
@@ -93,14 +101,15 @@ async def cmd_reinit(message: Message):
     chat_info = await ChatRepo.get_chat(message.chat.id)
 
     if not chat_info:
-        await temp_msg(message,
-                       f"ℹ️ <b>Чат еще не инициализирован</b>\n\n"
-                       f"Используйте /init для инициализации",
-                       parse_mode="HTML"
-                       )
+        await temp_msg(
+            message,
+            f"ℹ️ <b>Чат еще не инициализирован</b>\n\n"
+            f"Используйте /init для инициализации",
+            parse_mode="HTML",
+        )
         return
 
-    match = re.search(r'^/reinit(?:@\w+)?\s+(.+)', message.text)
+    match = re.search(r"^/reinit(?:@\w+)?\s+(.+)", message.text)
     if not match:
         await temp_msg(
             message,
@@ -116,17 +125,18 @@ async def cmd_reinit(message: Message):
         chat_title=message.chat.title,
         chat_type=message.chat.type,
         contractor_name=contractor_name,
-        initialized_by=message.from_user.id
+        initialized_by=message.from_user.id,
     )
 
     if success:
-        await temp_msg(message,
-                       f"✅ <b>Чат успешно инициализирован!</b>\n\n"
-                       f"📝 Контрагент: <b>{contractor_name}</b>\n"
-                       f"🆔 Chat ID: <code>{message.chat.id}</code>\n\n"
-                       f"Теперь пользователи могут работать с ботом в этом чате.",
-                       parse_mode="HTML"
-                       )
+        await temp_msg(
+            message,
+            f"✅ <b>Чат успешно инициализирован!</b>\n\n"
+            f"📝 Контрагент: <b>{contractor_name}</b>\n"
+            f"🆔 Chat ID: <code>{message.chat.id}</code>\n\n"
+            f"Теперь пользователи могут работать с ботом в этом чате.",
+            parse_mode="HTML",
+        )
     else:
         await temp_msg(message, "❌ Ошибка при инициализации чата")
 
@@ -139,7 +149,9 @@ async def cmd_setadmin(message: Message):
         return
 
     if not message.reply_to_message:
-        await temp_msg(message, "⚠️ Ответьте на сообщение пользователя командой /setadmin")
+        await temp_msg(
+            message, "⚠️ Ответьте на сообщение пользователя командой /setadmin"
+        )
         return
 
     target_user = message.reply_to_message.from_user
@@ -156,7 +168,7 @@ async def cmd_setadmin(message: Message):
         f"👤 ID: <code>{target_user.id}</code>\n"
         f"📝 Username: @{target_user.username or 'Не указан'}\n"
         f"📛 Имя: {target_user.first_name}",
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 
@@ -168,7 +180,9 @@ async def cmd_removeadmin(message: Message):
         return
 
     if not message.reply_to_message:
-        await temp_msg(message, "⚠️ Ответьте на сообщение пользователя командой /removeadmin")
+        await temp_msg(
+            message, "⚠️ Ответьте на сообщение пользователя командой /removeadmin"
+        )
         return
 
     target_user = message.reply_to_message.from_user
@@ -184,5 +198,5 @@ async def cmd_removeadmin(message: Message):
         f"✅ Права администратора сняты:\n"
         f"👤 ID: <code>{target_user.id}</code>\n"
         f"📝 Username: @{target_user.username or 'Не указан'}",
-        parse_mode="HTML"
+        parse_mode="HTML",
     )

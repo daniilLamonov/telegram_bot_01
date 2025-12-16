@@ -15,10 +15,7 @@ router = Router(name="exchange")
 @router.message(Command("ch"), IsAdminFilter())
 async def cmd_ch(message: Message):
     await delete_message(message)
-    match = re.search(
-        r'/ch\s+(\d+(?:\.\d+)?)\s+([\d\s.,]+)',
-        message.text
-    )
+    match = re.search(r"/ch\s+(\d+(?:\.\d+)?)\s+([\d\s.,]+)", message.text)
     if not match:
         await temp_msg(
             message,
@@ -28,14 +25,16 @@ async def cmd_ch(message: Message):
             "• /ch 95 5 000 000\n"
             "• /ch 95,5 1 000 000\n"
             "• /ch 100 500 000",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
     try:
-        rate = float(match.group(1).replace(',', '.'))
+        rate = float(match.group(1).replace(",", "."))
 
-        amount_str = match.group(2).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_str = (
+            match.group(2).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        )
         amount_rub = float(amount_str)
 
         if rate <= 0 or amount_rub <= 0:
@@ -77,12 +76,14 @@ async def cmd_ch(message: Message):
         )
 
         await message.answer(
-            (f"Обмен выполнен ✅\n\n"
-            f"{amount_rub:.2f} ₽ списано \n"
-            f"{rate} курс\n"
-            f"{commission_amount:.2f}$ комиссия в чате ({rate}%)\n"
-            f"{amount_after_commission:.2f}$ пополнен баланс").replace(".", ","),
-            reply_markup=get_delete_keyboard()
+            (
+                f"Обмен выполнен ✅\n\n"
+                f"{amount_rub:.2f} ₽ списано \n"
+                f"{rate} курс\n"
+                f"{commission_amount:.2f}$ комиссия в чате ({rate}%)\n"
+                f"{amount_after_commission:.2f}$ пополнен баланс"
+            ).replace(".", ","),
+            reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректные значения")

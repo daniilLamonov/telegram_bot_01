@@ -14,7 +14,8 @@ from states import ReconciliationStates
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
-router = Router(name='reconciliation')
+router = Router(name="reconciliation")
+
 
 @router.message(Command("history", "h"), IsAdminFilter())
 async def cmd_h(message: Message):
@@ -52,14 +53,10 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="📅 Сегодня", callback_data="sv_today"),
-        InlineKeyboardButton(text="📆 Вчера", callback_data="sv_yesterday")
+        InlineKeyboardButton(text="📆 Вчера", callback_data="sv_yesterday"),
     )
-    builder.row(
-        InlineKeyboardButton(text="📝 Ввести дату", callback_data="sv_custom")
-    )
-    builder.row(
-        InlineKeyboardButton(text="❌ Отмена", callback_data="sv_cancel")
-    )
+    builder.row(InlineKeyboardButton(text="📝 Ввести дату", callback_data="sv_custom"))
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="sv_cancel"))
 
     instruction_text = (
         "📊 <b>Сверка чеков</b>\n\n"
@@ -72,9 +69,7 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
     )
 
     bot_msg = await message.answer(
-        instruction_text,
-        parse_mode='HTML',
-        reply_markup=builder.as_markup()
+        instruction_text, parse_mode="HTML", reply_markup=builder.as_markup()
     )
 
     await state.update_data(sv_msg_id=bot_msg.message_id)
@@ -84,7 +79,7 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
 async def sv_today(callback: CallbackQuery, state: FSMContext):
     await callback.answer("📅 Загрузка чеков за сегодня...")
     data = await state.get_data()
-    sv_msg_id = data.get('sv_msg_id')
+    sv_msg_id = data.get("sv_msg_id")
 
     try:
         if sv_msg_id:
@@ -96,12 +91,7 @@ async def sv_today(callback: CallbackQuery, state: FSMContext):
     tomorrow = today + timedelta(days=1)
 
     await show_checks_for_period(
-        callback.message,
-        callback.message.chat.id,
-        today,
-        tomorrow,
-        "Сегодня",
-        state
+        callback.message, callback.message.chat.id, today, tomorrow, "Сегодня", state
     )
 
 
@@ -110,7 +100,7 @@ async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
     """Сверка за вчера"""
     await callback.answer("📆 Загрузка чеков за вчера...")
     data = await state.get_data()
-    sv_msg_id = data.get('sv_msg_id')
+    sv_msg_id = data.get("sv_msg_id")
 
     try:
         if sv_msg_id:
@@ -122,12 +112,7 @@ async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
     yesterday = today - timedelta(days=1)
 
     await show_checks_for_period(
-        callback.message,
-        callback.message.chat.id,
-        yesterday,
-        today,
-        "Вчера",
-        state
+        callback.message, callback.message.chat.id, yesterday, today, "Вчера", state
     )
 
 
@@ -136,7 +121,7 @@ async def sv_custom(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
     data = await state.get_data()
-    sv_msg_id = data.get('sv_msg_id')
+    sv_msg_id = data.get("sv_msg_id")
 
     try:
         if sv_msg_id:
@@ -152,8 +137,8 @@ async def sv_custom(callback: CallbackQuery, state: FSMContext):
         "Формат: <code>ДД.ММ.ГГГГ</code>\n"
         "Пример: <code>10.12.2025</code>\n\n"
         "Или <code>сегодня</code> / <code>вчера</code>",
-        parse_mode='HTML',
-        reply_markup=builder.as_markup()
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
     )
 
     await state.set_state(ReconciliationStates.waiting_for_date)
@@ -165,7 +150,7 @@ async def process_custom_date(message: Message, state: FSMContext):
     await delete_message(message)
 
     data = await state.get_data()
-    sv_msg_id = data.get('sv_msg_id')
+    sv_msg_id = data.get("sv_msg_id")
 
     try:
         if sv_msg_id:
@@ -175,14 +160,16 @@ async def process_custom_date(message: Message, state: FSMContext):
 
     text = message.text.strip().lower()
 
-    if text in ['сегодня', 'today']:
+    if text in ["сегодня", "today"]:
         target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         period_name = "Сегодня"
-    elif text in ['вчера', 'yesterday']:
-        target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    elif text in ["вчера", "yesterday"]:
+        target_date = datetime.now().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=1)
         period_name = "Вчера"
     else:
-        match = re.match(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$', text)
+        match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", text)
 
         if not match:
             await temp_msg(
@@ -191,7 +178,7 @@ async def process_custom_date(message: Message, state: FSMContext):
                 "Используйте: <code>ДД.ММ.ГГГГ</code>\n"
                 "Пример: <code>10.12.2025</code>",
                 10,
-                parse_mode='HTML'
+                parse_mode="HTML",
             )
             return
 
@@ -203,26 +190,26 @@ async def process_custom_date(message: Message, state: FSMContext):
         except ValueError:
             await temp_msg(
                 message,
-                "❌ <b>Некорректная дата!</b>\n\n"
-                "Проверьте правильность даты.",
+                "❌ <b>Некорректная дата!</b>\n\n" "Проверьте правильность даты.",
                 10,
-                parse_mode='HTML'
+                parse_mode="HTML",
             )
             return
 
     next_date = target_date + timedelta(days=1)
     await show_checks_for_period(
-        message,
-        message.chat.id,
-        target_date,
-        next_date,
-        period_name,
-        state
+        message, message.chat.id, target_date, next_date, period_name, state
     )
 
 
-async def show_checks_for_period(message: Message, chat_id: int, start_date, end_date, period_name: str,
-                                 state: FSMContext):
+async def show_checks_for_period(
+    message: Message,
+    chat_id: int,
+    start_date,
+    end_date,
+    period_name: str,
+    state: FSMContext,
+):
     checks = await OperationRepo.get_checks_by_date(chat_id, start_date, end_date)
     contractor_name = await ChatRepo.get_contractor_name(chat_id)
 
@@ -232,20 +219,20 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
             f"📭 <b>Чеки не найдены</b>\n\n"
             f"За период: <b>{period_name}</b>\n"
             f"КА: {hd.quote(contractor_name)}",
-            parse_mode='HTML',
-            reply_markup=get_delete_keyboard()
+            parse_mode="HTML",
+            reply_markup=get_delete_keyboard(),
         )
         return
 
-    total_amount = sum(check['amount'] for check in checks)
+    total_amount = sum(check["amount"] for check in checks)
 
     checks_list = []
     for idx, check in enumerate(checks, 1):
-        desc = check['description']
-        payer_match = re.search(r'Плательщик: ([^.]+)', desc)
+        desc = check["description"]
+        payer_match = re.search(r"Плательщик: ([^.]+)", desc)
         payer = payer_match.group(1) if payer_match else "Не указано"
 
-        time_str = check['timestamp'].strftime("%H:%M")
+        time_str = check["timestamp"].strftime("%H:%M")
 
         checks_list.append(
             f"{idx}. <code>{check['operation_id'][:8]}</code> | "
@@ -273,17 +260,19 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
             f"📋 <b>Найдено чеков: {len(checks)}</b>\n"
             f"💰 <b>Общая сумма: {total_amount:.2f} ₽</b>"
         )
-        await message.answer(header, parse_mode='HTML', reply_markup=get_delete_keyboard())
+        await message.answer(
+            header, parse_mode="HTML", reply_markup=get_delete_keyboard()
+        )
 
         chunk_size = 10
         for i in range(0, len(checks), chunk_size):
-            chunk = checks[i:i + chunk_size]
+            chunk = checks[i : i + chunk_size]
             chunk_list = []
             for idx, check in enumerate(chunk, i + 1):
-                desc = check['description']
-                payer_match = re.search(r'Плательщик: ([^.]+)', desc)
+                desc = check["description"]
+                payer_match = re.search(r"Плательщик: ([^.]+)", desc)
                 payer = payer_match.group(1) if payer_match else "Не указано"
-                time_str = check['timestamp'].strftime("%H:%M")
+                time_str = check["timestamp"].strftime("%H:%M")
 
                 chunk_list.append(
                     f"{idx}. <code>{check['operation_id'][:8]}</code> | "
@@ -291,9 +280,15 @@ async def show_checks_for_period(message: Message, chat_id: int, start_date, end
                     f"   👤 {hd.quote(payer)}"
                 )
 
-            await message.answer("\n\n".join(chunk_list), parse_mode='HTML', reply_markup=get_delete_keyboard())
+            await message.answer(
+                "\n\n".join(chunk_list),
+                parse_mode="HTML",
+                reply_markup=get_delete_keyboard(),
+            )
     else:
-        await message.answer(result_text, parse_mode='HTML', reply_markup=get_delete_keyboard())
+        await message.answer(
+            result_text, parse_mode="HTML", reply_markup=get_delete_keyboard()
+        )
 
     await state.clear()
 

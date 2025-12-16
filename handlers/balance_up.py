@@ -15,16 +15,15 @@ router = Router(name="balance_up")
 async def cmd_gets(message: Message):
     await delete_message(message)
 
-    match = re.search(
-        r'/gets\s+([\d\s.,]+)',
-        message.text
-    )
+    match = re.search(r"/gets\s+([\d\s.,]+)", message.text)
     if not match.groups():
         await temp_msg(message, "Использование: /gets <сумма>")
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_str = (
+            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        )
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id
@@ -52,16 +51,15 @@ async def cmd_gets(message: Message):
 @router.message(Command("get"), IsAdminFilter())
 async def cmd_get(message: Message):
     await delete_message(message)
-    match = re.search(
-        r'/get\s+([\d\s.,]+)',
-        message.text
-    )
+    match = re.search(r"/get\s+([\d\s.,]+)", message.text)
     if not match:
         await temp_msg(message, "Использование: /get <сумма>")
         return
 
     try:
-        amount_str = match.group(1).replace(' ', '').replace('\u00A0', '').replace(',', '.')
+        amount_str = (
+            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        )
         amount = float(amount_str)
         chat_id = message.chat.id
         user_id = message.from_user.id

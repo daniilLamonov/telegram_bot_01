@@ -7,6 +7,7 @@ from aiogram.types import Message
 from database.repositories import ChatRepo, OperationRepo
 from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
+from utils.keyboards import get_delete_keyboard
 
 router = Router(name="exchange")
 
@@ -80,7 +81,8 @@ async def cmd_ch(message: Message):
             f"{amount_rub:.2f} ₽ списано \n"
             f"{rate} курс\n"
             f"{commission_amount:.2f}$ комиссия в чате ({rate}%)\n"
-            f"{amount_after_commission:.2f}$ пополнен баланс").replace(".", ",")
+            f"{amount_after_commission:.2f}$ пополнен баланс").replace(".", ","),
+            reply_markup=get_delete_keyboard()
         )
     except (ValueError, IndexError):
         await temp_msg(message, "Ошибка: введите корректные значения")

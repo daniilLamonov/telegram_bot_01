@@ -6,7 +6,6 @@ class ChatRepo(BaseRepository):
 
     @classmethod
     async def get_chat(cls, chat_id: int) -> Optional[dict]:
-        """Получить информацию о чате"""
         row = await cls._fetchrow(
             'SELECT * FROM chats WHERE chat_id = $1',
             chat_id
@@ -30,7 +29,6 @@ class ChatRepo(BaseRepository):
             contractor_name: str,
             initialized_by: int
     ) -> bool:
-        """Инициализировать чат"""
         try:
             await cls._execute('''
                                 INSERT INTO chats (chat_id, chat_title, chat_type, contractor_name, initialized_by,
@@ -116,7 +114,6 @@ class ChatRepo(BaseRepository):
 
     @classmethod
     async def get_all_chats(cls) -> List[dict]:
-        """Получить все чаты"""
         results = await cls._fetch('''
                                     SELECT chat_id,
                                            contractor_name,

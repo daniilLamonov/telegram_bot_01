@@ -12,7 +12,8 @@ async def init_db():
         dsn=settings.DATABASE_URL,
         min_size=5,
         max_size=20,
-        command_timeout=60
+        command_timeout=60,
+        server_settings={'timezone': 'Europe/Moscow'}
     )
 
     async with db_pool.acquire() as conn:

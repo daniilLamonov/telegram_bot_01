@@ -34,7 +34,12 @@ def get_help_main_keyboard():
 
     builder.row(InlineKeyboardButton(text="🗑 Удалить", callback_data="delete_message"))
     return builder.as_markup()
-
+def get_super_admin_keyboard():
+    builder = get_help_main_keyboard()
+    builder.row(
+        InlineKeyboardButton(text="Super Admin", callback_data="super_settings"),
+    )
+    return builder.as_markup()
 
 def get_help_main_text():
     return """
@@ -61,7 +66,11 @@ async def cmd_start(message: Message):
 async def cmd_help(message: Message):
     await delete_message(message)
     is_admin = await UserRepo.is_admin(message.from_user.id)
-    if is_admin:
+    if message.from_user.id in settings.SUPER_ADMIN_ID:
+        await message.answer(
+            get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"
+        )
+    elif is_admin:
         await message.answer(
             get_help_main_text(), reply_markup=get_help_main_keyboard(), parse_mode="HTML"
         )
@@ -69,7 +78,6 @@ async def cmd_help(message: Message):
         await message.answer(
             get_help_main_text(), reply_markup=get_delete_keyboard(), parse_mode="HTML"
         )
-
 
 @router.callback_query(F.data.startswith("help_"))
 async def process_help_callback(callback: CallbackQuery):
@@ -144,9 +152,6 @@ async def process_help_callback(callback: CallbackQuery):
 <b>/export [date1] [date2]</b> - Выгрузить Excel
 Полный отчет по операциям данного чата(КА)
 (если даты указана, то за период)
-
-<b>/exportall [date1] [date2]</b> - Выгрузить Excel
-Полный отчет по всем чатам(КА) (если даты указана, то за период)
     """,
         "help_deposit": """
 📥 <b>Пополнение баланса</b>
@@ -181,7 +186,10 @@ async def process_help_callback(callback: CallbackQuery):
 """,
         "help_settings": """
 ⚙️ <b>Настройки чата</b>
+Для начала работы:
+1.Добавляем бота в рабочий чат и делаем админом
  "⚠️ Для корректной работы необходимо назначить бота админом чата!!!"
+2. Инициализируем чат
 <b>/init [Название]</b>
 Инициализировать чат
 • Устанавливает название контрагента
@@ -197,6 +205,13 @@ async def process_help_callback(callback: CallbackQuery):
 (установить комиссию 2,5%)
 
 ⚠️ Комиссия применяется ко всем обменам
+""",
+ "super_settings": """
+Только для СУПЕР админов             
+Добавить нового админа - <b>/setadmin</b> + ответом на сообщение
+Удалить админа - <b>/removeadmin</b> + ответом на сообщение
+<b>/exportall [date1] [date2]</b> - Выгрузить Excel
+Полный отчет по всем чатам(КА) (если даты указана, то за период)
 """
     }
 

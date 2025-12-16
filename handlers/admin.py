@@ -11,7 +11,6 @@ from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 
 router = Router(name="admin")
-SUPER_ADMIN_ID = settings.SUPER_ADMIN_ID
 
 @router.message(Command("new"), IsAdminFilter())
 async def cmd_new(message: Message):
@@ -134,7 +133,8 @@ async def cmd_reinit(message: Message):
 
 @router.message(Command("setadmin"))
 async def cmd_setadmin(message: Message):
-    if message.from_user.id not in SUPER_ADMIN_ID:
+    await delete_message(message)
+    if message.from_user.id not in settings.SUPER_ADMIN_ID:
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
@@ -162,7 +162,8 @@ async def cmd_setadmin(message: Message):
 
 @router.message(Command("removeadmin"))
 async def cmd_removeadmin(message: Message):
-    if message.from_user.id not in SUPER_ADMIN_ID:
+    await delete_message(message)
+    if message.from_user.id not in settings.SUPER_ADMIN_ID:
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
@@ -171,6 +172,10 @@ async def cmd_removeadmin(message: Message):
         return
 
     target_user = message.reply_to_message.from_user
+
+    if target_user.id in settings.SUPER_ADMIN_ID:
+        await temp_msg(message, "Невозможно лишить прав суперадмина")
+        return
 
     await UserRepo.set_admin(target_user.id, is_admin=False)
 

@@ -78,7 +78,7 @@ async def cmd_help(message: Message):
     if message.from_user.id in settings.SUPER_ADMIN_ID:
         await message.answer(
             get_help_main_text(),
-            reply_markup=get_help_main_keyboard(),
+            reply_markup=get_super_admin_keyboard(),
             parse_mode="HTML",
         )
     elif is_admin:

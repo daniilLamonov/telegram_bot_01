@@ -49,7 +49,6 @@ class OperationRepo(BaseRepository):
 
     @classmethod
     async def get_operation(cls, operation_id: str) -> Optional[dict]:
-        """Получить операцию по ID"""
         row = await cls._fetchrow(
             'SELECT * FROM operations WHERE operation_id = $1',
             operation_id
@@ -58,15 +57,17 @@ class OperationRepo(BaseRepository):
 
     @classmethod
     async def delete_operation(cls, operation_id: str):
-        """Удалить операцию"""
         await cls._execute(
             'DELETE FROM operations WHERE operation_id = $1',
             operation_id
         )
+        return {
+            'success': True,
+            'message': 'Операция удалена, баланс скорректирован',
+        }
 
     @classmethod
     async def get_operations(cls, chat_id: Optional[int] = None) -> List[dict]:
-        """Получить все операции (опционально по чату)"""
         if chat_id is None:
             results = await cls._fetch('''
                                         SELECT o.operation_id,

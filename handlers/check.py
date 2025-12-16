@@ -636,7 +636,7 @@ async def cmd_delete(message: Message):
 async def process_delete_confirmation(callback: CallbackQuery):
     operation_id = callback.data.split(":")[1]
 
-    operation = await OperationRepo.log_operation(operation_id)
+    operation = await OperationRepo.get_operation(operation_id)
 
     if not operation:
         await callback.answer()
@@ -646,28 +646,26 @@ async def process_delete_confirmation(callback: CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-    chat_id = callback.message.chat.id
     operation_chat_id = operation["chat_id"]
     amount = operation["amount"]
 
-    balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
+    balance_rub, balance_usdt = await ChatRepo.get_balance(operation_chat_id)
 
     balance_rub = balance_rub - int(amount)
 
-    result = await OperationRepo.delete_operation(operation_chat_id)
+    result = await OperationRepo.delete_operation(operation_id)
 
-    await ChatRepo.update_balance(chat_id, balance_rub, balance_usdt)
+    await ChatRepo.update_balance(operation_chat_id, balance_rub, balance_usdt)
 
     if result["success"]:
         await callback.message.edit_text(
             (f"✅ Операция удалена успешно!\n\n"
             f"ID: {operation_id}\n"
             f"Чат ID: {operation_chat_id}\n"
-            f'Тип: {result["operation"]["operation_type"]}\n'
-            f'Сумма: {result["operation"]["amount"]:.2f} {result["operation"]["currency"]}\n\n'
-            f"💰 Новый баланс чата:\n"
-            f'₽: {result["new_balance"]["rub"]:.2f}\n'
-            f'USDT: {result["new_balance"]["usdt"]:.2f}').replace('.', ','),
+            f'Сумма: {amount:.2f}\n\n'
+            f"Новый баланс чата:\n"
+            f'₽: {balance_rub:.2f}\n'
+            f'USDT: {balance_usdt:.2f}').replace('.', ','),
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
         )

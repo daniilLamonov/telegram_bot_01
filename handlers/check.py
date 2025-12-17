@@ -70,7 +70,6 @@ async def cmd_check_with_photo(message: Message):
 
 @router.message(F.text & F.text.contains("/check"))
 async def cmd_check_without_photo(message: Message, state: FSMContext):
-    """Обработка /check без фото - запрос фото"""
     await delete_message(message)
 
     await state.set_state(CheckStates.waiting_for_file)
@@ -136,6 +135,8 @@ async def add_to_queue(message: Message, state: FSMContext):
             "file_type": file_type,
             "file_ext": file_ext,
             "msg_id": message.message_id,
+            "user_id": message.from_user.id,  # ДОБАВЛЕНО
+            "username": message.from_user.username or message.from_user.first_name,
         }
     )
 
@@ -198,9 +199,10 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         InlineKeyboardButton(text="Это не чек", callback_data="skip_current"),
         InlineKeyboardButton(text="Это не чеки", callback_data="cancel_all"),
     )
-
+    username = current_file.get("username", "Неизвестно")
     caption_text = (
         f'📸 <b>{current_file["file_type"].capitalize()}</b> #{current_number} из {total_files}\n\n'
+        f'👤 От: @{username}\n\n'
         f"💰 Напишите сумму и ФИО:\n"
         f"• <code>сумма ФИО</code>\n"
         f"• <code>сумма</code> (если ФИО не указано)\n\n"
@@ -244,6 +246,13 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
 @router.message(CheckStates.waiting_for_amount, F.text)
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
+    data = await state.get_data()
+    current_file = data.get("current_file")
+
+    if current_file and current_file.get("user_id"):
+        if message.from_user.id != current_file["user_id"]:
+            return
+
     text = message.text.strip()
     match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
     if not match:
@@ -395,15 +404,25 @@ async def show_all_results(bot, chat_id, state: FSMContext):
 
 # ============= КНОПКИ =============
 
-@router.callback_query(F.data == 'not_check')
-async def not_check_callback(state: FSMContext):
-    data = await state.get_data()
+
+# ============= КНОПКИ =============
 
 @router.callback_query(F.data == "skip_current")
 async def skip_current_file(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("⏭ Пропущено")
-
+    """Пропустить текущий файл"""
     data = await state.get_data()
+    current_file = data.get("current_file")
+
+    # Проверяем, что кнопку нажал тот же пользователь, который прислал файл
+    if current_file and current_file.get("user_id"):
+        if callback.from_user.id != current_file["user_id"]:
+            await callback.answer(
+                "⚠️ Эта кнопка для другого пользователя",
+                show_alert=True
+            )
+            return
+
+    await callback.answer("⏭ Пропущено")
 
     try:
         await callback.message.delete()
@@ -420,8 +439,25 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "cancel_all")
 async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("🗑 Отменено")
+    """Отменить все файлы"""
     data = await state.get_data()
+    queue = data.get("queue", [])
+
+    # Проверяем, есть ли файлы от этого пользователя в очереди
+    user_has_files = any(
+        f.get("user_id") == callback.from_user.id
+        for f in queue
+    )
+
+    if queue and not user_has_files:
+        await callback.answer(
+            "⚠️ В очереди нет ваших файлов",
+            show_alert=True
+        )
+        return
+
+    await callback.answer("🗑 Отменено")
+
     try:
         await callback.message.delete()
 

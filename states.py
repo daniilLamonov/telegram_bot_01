@@ -8,3 +8,6 @@ class CheckStates(StatesGroup):
 
 class ReconciliationStates(StatesGroup):
     waiting_for_date = State()
+
+class NewsletterStates(StatesGroup):
+    waiting_for_text = State()

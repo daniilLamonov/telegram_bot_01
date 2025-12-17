@@ -1,12 +1,15 @@
 import re
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
 from database.repositories import ChatRepo, UserRepo
 from filters.admin import IsAdminFilter
+from states import NewsletterStates
 
 from utils.helpers import delete_message, temp_msg
 
@@ -200,3 +203,101 @@ async def cmd_removeadmin(message: Message):
         f"📝 Username: @{target_user.username or 'Не указан'}",
         parse_mode="HTML",
     )
+
+@router.message(Command("newsletter"))
+async def cmd_newsletter(message: Message, state: FSMContext):
+    if message.from_user.id not in settings.SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
+        return
+    await delete_message(message)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отменить", callback_data="cancel_newsletter")
+
+    await state.set_state(NewsletterStates.waiting_for_text)
+
+    await message.answer(
+        "📢 <b>Рассылка сообщений</b>\n\n"
+        "Отправьте текст для рассылки по всем чатам.\n"
+        "Можете использовать HTML форматирование:\n"
+        "• <code>&lt;b&gt;жирный&lt;/b&gt;</code>\n"
+        "• <code>&lt;i&gt;курсив&lt;/i&gt;</code>\n"
+        "• <code>&lt;code&gt;код&lt;/code&gt;</code>",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "cancel_newsletter")
+async def cancel_newsletter(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("❌ Рассылка отменена")
+    await state.clear()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
+@router.message(NewsletterStates.waiting_for_text)
+async def process_newsletter_text(message: Message, state: FSMContext):
+    newsletter_text = message.text or message.caption
+
+    if not newsletter_text:
+        await temp_msg(message, "❌ Текст не может быть пустым")
+        return
+
+    all_chats = await ChatRepo.get_all_active_chats()
+
+    if not all_chats:
+        await message.answer("⚠️ Нет активных чатов для рассылки")
+        await state.clear()
+        return
+
+    progress_msg = await message.answer(
+        f"📤 Начинаю рассылку...\n"
+        f"Всего чатов: {len(all_chats)}"
+    )
+
+    success_count = 0
+    failed_count = 0
+    failed_chats = []
+
+    for chat in all_chats:
+        try:
+            await message.bot.send_message(
+                chat_id=chat['chat_id'],
+                text=newsletter_text,
+                parse_mode="HTML"
+            )
+            success_count += 1
+        except Exception as e:
+            failed_count += 1
+            failed_chats.append({
+                'chat_id': chat['chat_id'],
+                'contractor': chat.get('contractor_name', 'Неизвестно'),
+                'error': str(e)
+            })
+
+    try:
+        await progress_msg.delete()
+    except Exception:
+        pass
+
+    report = (
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"📊 Статистика:\n"
+        f"• Успешно: {success_count}\n"
+        f"• Ошибки: {failed_count}\n"
+        f"• Всего: {len(all_chats)}"
+    )
+
+    if failed_chats:
+        report += "\n\n❌ <b>Не удалось отправить:</b>\n"
+        for chat in failed_chats[:5]:  # Показываем только первые 5
+            report += f"• {chat['contractor']} (ID: {chat['chat_id']})\n"
+
+        if len(failed_chats) > 5:
+            report += f"... и ещё {len(failed_chats) - 5}"
+
+    await message.answer(report, parse_mode="HTML")
+    await state.clear()

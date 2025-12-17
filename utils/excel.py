@@ -1,5 +1,8 @@
 from datetime import datetime
-
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment
+from io import BytesIO
+from typing import List
 from database.repositories import ChatRepo, OperationRepo
 
 
@@ -429,4 +432,113 @@ async def export_to_excel(
                 ws_import.column_dimensions["I"].width = 10
 
     buffer.seek(0)
+    return buffer
+
+
+async def export_comparison_report(
+        only_in_file: List[dict],
+        only_in_db: List[dict],
+        target_date: datetime,
+        total_file: int,
+        total_db: int
+) -> BytesIO:
+    """
+    Генерирует Excel отчет о расхождениях между файлом и БД
+
+    Args:
+        only_in_file: Операции есть в файле, но нет в БД (красные)
+        only_in_db: Операции есть в БД, но нет в файле (желтые)
+        target_date: Дата сравнения
+        total_file: Всего операций в файле
+        total_db: Всего операций в БД
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Расхождения"
+
+    # Стили
+    red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=12)
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    # Заголовки
+    headers = ["Источник", "Сумма (₽)", "Дата/Время", "Контрагент/Chat", "Username", "Примечание"]
+    ws.append(headers)
+
+    # Форматируем заголовок
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+
+    row = 2
+
+    # Красные - есть в файле, нет в БД
+    if only_in_file:
+        for op in only_in_file:
+            ws.append([
+                "Файл (нет в БД)",
+                op['amount'],
+                op['datetime'].strftime('%d.%m.%Y %H:%M:%S'),
+                op['contractor'],
+                "-",
+                f"ID: {op['transaction_id']}"
+            ])
+            for col in range(1, 7):
+                cell = ws.cell(row=row, column=col)
+                cell.fill = red_fill
+            row += 1
+
+    # Желтые - есть в БД, нет в файле
+    if only_in_db:
+        for op in only_in_db:
+            chat_name = await ChatRepo.get_contractor_name(op['chat_id'])
+            ws.append([
+                "БД (нет в файле)",
+                float(op['amount']),
+                op['timestamp'].strftime('%d.%m.%Y %H:%M:%S'),
+                f"{chat_name} (ID: {op['chat_id']})",
+                op['username'],
+                f"Op ID: {op['operation_id']}"
+            ])
+            for col in range(1, 7):
+                cell = ws.cell(row=row, column=col)
+                cell.fill = yellow_fill
+            row += 1
+
+    # Автоширина колонок
+    for column in ws.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # Добавляем лист со статистикой
+    ws_stats = wb.create_sheet("Статистика")
+    ws_stats.append(["Параметр", "Значение"])
+    ws_stats.append(["Дата сравнения", target_date.strftime('%d.%m.%Y')])
+    ws_stats.append(["Всего в файле", total_file])
+    ws_stats.append(["Всего в БД", total_db])
+    ws_stats.append(["Только в файле (красные)", len(only_in_file)])
+    ws_stats.append(["Только в БД (желтые)", len(only_in_db)])
+    ws_stats.append(["Совпало операций", total_file - len(only_in_file)])
+
+    # Форматируем статистику
+    for row in range(1, 8):
+        ws_stats.cell(row=row, column=1).font = Font(bold=True)
+
+    # Сохраняем в BytesIO
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
     return buffer

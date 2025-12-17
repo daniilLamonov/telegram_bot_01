@@ -12,6 +12,7 @@ from filters.admin import IsAdminFilter
 from states import NewsletterStates
 
 from utils.helpers import delete_message, temp_msg
+from utils.keyboards import get_delete_keyboard
 
 router = Router(name="admin")
 
@@ -204,6 +205,7 @@ async def cmd_removeadmin(message: Message):
         parse_mode="HTML",
     )
 
+
 @router.message(Command("newsletter"))
 async def cmd_newsletter(message: Message, state: FSMContext):
     if message.from_user.id not in settings.SUPER_ADMIN_ID:
@@ -216,7 +218,7 @@ async def cmd_newsletter(message: Message, state: FSMContext):
 
     await state.set_state(NewsletterStates.waiting_for_text)
 
-    await message.answer(
+    bot_message = await message.answer(
         "📢 <b>Рассылка сообщений</b>\n\n"
         "Отправьте текст для рассылки по всем чатам.\n"
         "Можете использовать HTML форматирование:\n"
@@ -226,6 +228,8 @@ async def cmd_newsletter(message: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
+
+    await state.update_data(newsletter_prompt_msg_id=bot_message.message_id)
 
 
 @router.callback_query(F.data == "cancel_newsletter")
@@ -241,10 +245,19 @@ async def cancel_newsletter(callback: CallbackQuery, state: FSMContext):
 @router.message(NewsletterStates.waiting_for_text)
 async def process_newsletter_text(message: Message, state: FSMContext):
     newsletter_text = message.text or message.caption
+    await delete_message(message)
 
     if not newsletter_text:
         await temp_msg(message, "❌ Текст не может быть пустым")
         return
+
+    data = await state.get_data()
+    prompt_msg_id = data.get("newsletter_prompt_msg_id")
+    if prompt_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, prompt_msg_id)
+        except Exception:
+            pass
 
     all_chats = await ChatRepo.get_all_active_chats()
 
@@ -298,5 +311,5 @@ async def process_newsletter_text(message: Message, state: FSMContext):
         if len(failed_chats) > 5:
             report += f"... и ещё {len(failed_chats) - 5}"
 
-    await message.answer(report, parse_mode="HTML")
+    await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
     await state.clear()

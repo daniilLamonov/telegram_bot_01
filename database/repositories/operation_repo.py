@@ -125,7 +125,6 @@ class OperationRepo(BaseRepository):
     async def get_operations_with_period(
         cls, chat_id: Optional[int], start_date: datetime, end_date: datetime
     ) -> List[dict]:
-        """Получить операции за период"""
         if chat_id is None:
             results = await cls._fetch(
                 """
@@ -225,3 +224,23 @@ class OperationRepo(BaseRepository):
             end_date,
         )
         return [dict(row) for row in results]
+
+    @classmethod
+    async def get_all_checks_by_date(
+            cls, start_date: datetime, end_date: datetime
+    ) -> List[dict]:
+        """Получает все чеки от всех контрагентов за период"""
+        results = await cls._fetch(
+            """
+            SELECT operation_id, chat_id, username, amount, timestamp, description
+            FROM operations
+            WHERE operation_type = 'пополнение_руб_чек'
+              AND timestamp >= $1
+              AND timestamp < $2
+            ORDER BY timestamp DESC
+            """,
+            start_date,
+            end_date,
+        )
+        return [dict(row) for row in results]
+

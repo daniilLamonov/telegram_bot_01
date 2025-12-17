@@ -102,7 +102,7 @@ async def receive_file_after_check(message: Message, state: FSMContext):
 # ============= ФОТО БЕЗ КОМАНДЫ =============
 
 
-@router.message(F.photo | F.document)
+@router.message((F.photo | F.document) & ~F.caption)
 async def handle_photo_without_command(message: Message, state: FSMContext):
     if message.caption and "/check" in message.caption:
         return
@@ -404,16 +404,11 @@ async def show_all_results(bot, chat_id, state: FSMContext):
 
 # ============= КНОПКИ =============
 
-
-# ============= КНОПКИ =============
-
 @router.callback_query(F.data == "skip_current")
 async def skip_current_file(callback: CallbackQuery, state: FSMContext):
-    """Пропустить текущий файл"""
     data = await state.get_data()
     current_file = data.get("current_file")
 
-    # Проверяем, что кнопку нажал тот же пользователь, который прислал файл
     if current_file and current_file.get("user_id"):
         if callback.from_user.id != current_file["user_id"]:
             await callback.answer(
@@ -439,11 +434,9 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "cancel_all")
 async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
-    """Отменить все файлы"""
     data = await state.get_data()
     queue = data.get("queue", [])
 
-    # Проверяем, есть ли файлы от этого пользователя в очереди
     user_has_files = any(
         f.get("user_id") == callback.from_user.id
         for f in queue

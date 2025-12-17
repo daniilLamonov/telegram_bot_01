@@ -285,15 +285,14 @@ async def process_newsletter_text(message: Message, state: FSMContext):
 
     report = (
         f"✅ <b>Рассылка завершена!</b>\n\n"
-        f"📊 Статистика:\n"
         f"• Успешно: {success_count}\n"
         f"• Ошибки: {failed_count}\n"
-        f"• Всего: {len(all_chats)}"
+        f"• Всего чатов: {len(all_chats)}"
     )
 
     if failed_chats:
         report += "\n\n❌ <b>Не удалось отправить:</b>\n"
-        for chat in failed_chats[:5]:  # Показываем только первые 5
+        for chat in failed_chats[:5]:
             report += f"• {chat['contractor']} (ID: {chat['chat_id']})\n"
 
         if len(failed_chats) > 5:

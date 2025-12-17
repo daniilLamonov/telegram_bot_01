@@ -242,6 +242,9 @@ async def process_help_callback(callback: CallbackQuery):
 <b>/removeadmin</b> - Удалить админа
 Ответьте этой командой на сообщение пользователя
 
+<b>/newsletter</b> - Новостная рассылка
+Рассылает сообщение по всем активным чатам
+
 <b>/exportall [date1] [date2]</b> - Выгрузить Excel
 Полный отчет по ВСЕМ чатам (КА)
 Если даты указаны, то за период

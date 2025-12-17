@@ -7,7 +7,7 @@ from utils.helpers import temp_msg
 
 class ChatInitMiddleware(BaseMiddleware):
 
-    ADMIN_COMMANDS = {"init", "help", "start"}
+    ADMIN_COMMANDS = {"init", "help", "start", "setadmin", "removeadmin"}
 
     async def __call__(
         self,

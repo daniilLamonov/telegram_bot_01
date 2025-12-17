@@ -16,7 +16,7 @@ from utils.keyboards import get_delete_keyboard
 router = Router(name="help")
 
 
-def get_help_main_keyboard():
+def help_main_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="⚙️ Чеки", callback_data="help_checks"),
@@ -32,13 +32,16 @@ def get_help_main_keyboard():
     )
 
     builder.row(InlineKeyboardButton(text="🗑 Удалить", callback_data="delete_message"))
+    return builder
+
+def get_help_main_keyboard():
+    builder = help_main_keyboard()
     return builder.as_markup()
 
-
 def get_super_admin_keyboard():
-    builder = get_help_main_keyboard()
+    builder = help_main_keyboard()
     builder.row(
-        InlineKeyboardButton(text="Super Admin", callback_data="super_settings"),
+        InlineKeyboardButton(text="Super Admin", callback_data="help_super_settings"),
     )
     return builder.as_markup()
 
@@ -61,8 +64,7 @@ async def cmd_start(message: Message):
     await temp_msg(
         message,
         (
-            f"👋 <b>Привет, {message.from_user.first_name}!</b>\n\n"
-            "Я бот для учёта чеков.\n\n"
+            "Бот для учёта чеков.\n\n"
             "Выполните команду /init для начала работы.\n"
             "⚠️ Для корректной работы необходимо назначить бота админом чата!!!"
             "Используйте /help чтобы узнать, что я умею."
@@ -95,12 +97,23 @@ async def cmd_help(message: Message):
 
 @router.callback_query(F.data.startswith("help_"))
 async def process_help_callback(callback: CallbackQuery):
+    user_id = callback.from_user.id
+
     if callback.data == "help_back":
-        await callback.message.edit_text(
-            get_help_main_text(),
-            reply_markup=get_help_main_keyboard(),
-            parse_mode="HTML",
-        )
+        is_super_admin = user_id in settings.SUPER_ADMIN_ID
+
+        if is_super_admin:
+            await callback.message.edit_text(
+                get_help_main_text(),
+                reply_markup=get_super_admin_keyboard(),
+                parse_mode="HTML",
+            )
+        else:
+            await callback.message.edit_text(
+                get_help_main_text(),
+                reply_markup=get_help_main_keyboard(),
+                parse_mode="HTML",
+            )
         await callback.answer()
         return
 
@@ -220,12 +233,20 @@ async def process_help_callback(callback: CallbackQuery):
 
 ⚠️ Комиссия применяется ко всем обменам
 """,
-        "super_settings": """
-Только для СУПЕР админов             
-Добавить нового админа - <b>/setadmin</b> + ответом на сообщение
-Удалить админа - <b>/removeadmin</b> + ответом на сообщение
+        "help_super_settings": """
+🔴 <b>Только для СУПЕР админов</b>
+
+<b>/setadmin</b> - Добавить нового админа
+Ответьте этой командой на сообщение пользователя
+
+<b>/removeadmin</b> - Удалить админа
+Ответьте этой командой на сообщение пользователя
+
 <b>/exportall [date1] [date2]</b> - Выгрузить Excel
-Полный отчет по всем чатам(КА) (если даты указана, то за период)
+Полный отчет по ВСЕМ чатам (КА)
+Если даты указаны, то за период
+
+⚠️ Эти команды доступны только супер-администраторам
 """,
     }
 

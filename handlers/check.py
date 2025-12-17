@@ -31,7 +31,7 @@ async def cmd_check_with_photo(message: Message):
     await delete_message(message)
     text = message.caption.strip()
 
-    match = re.search(r"/check\s+([\d\s]+(?:\.\d+)?)\s+(.*)", text)
+    match = re.search(r"/check\s+([\d\s.,]+)\s*(.*)$", text)
     if not match:
         await temp_msg(
             message,
@@ -45,12 +45,12 @@ async def cmd_check_with_photo(message: Message):
 
     try:
         amount_str = (
-            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+            match.group(1).strip().replace(" ", "").replace("\u00a0", "").replace(",", ".")
         )
         amount = float(amount_str)
-        payer_info = match.group(2).strip()
+        payer_info = match.group(2).strip() if match.group(2) else None
 
-        if payer_info == "0" or not payer_info:
+        if not payer_info or payer_info == "0":
             payer_info = "Не указано"
 
         if amount <= 0:
@@ -195,8 +195,8 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="❌ Пропустить", callback_data="skip_current"),
-        InlineKeyboardButton(text="🗑 Отменить всё", callback_data="cancel_all"),
+        InlineKeyboardButton(text="Это не чек", callback_data="skip_current"),
+        InlineKeyboardButton(text="Это не чеки", callback_data="cancel_all"),
     )
 
     caption_text = (
@@ -208,10 +208,6 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
     )
 
     try:
-        try:
-            await bot.delete_message(chat_id, current_file["msg_id"])
-        except Exception:
-            pass
         if current_file["file_type"] == "фото":
             bot_msg = await bot.send_photo(
                 chat_id=chat_id,
@@ -286,7 +282,10 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         if not current_file:
             await temp_msg(message, "❌ Ошибка: файл не найден")
             return
-
+        try:
+            await message.bot.delete_message(message.chat.id, current_file["msg_id"])
+        except Exception:
+            pass
         try:
             if current_bot_msg:
                 await message.bot.delete_message(message.chat.id, current_bot_msg)
@@ -374,24 +373,31 @@ async def show_all_results(bot, chat_id, state: FSMContext):
         return
 
     for result in results_queue:
+        amount = result["amount"]
+        if amount == int(amount):
+            f_amount = f'{int(amount):,}'.replace(',', ' ')
+        else:
+            f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
         await bot.send_message(
             chat_id=chat_id,
             text=(
-                f'✅ Баланс пополнен по чеку ({result["file_type"]})\n'
+                f'✅ <b>Баланс пополнен</b> по чеку ({result["file_type"]})\n'
                 f'ID:<code>{result["op_id"]}</code>\n'
                 f'Плательщик: {result["payer"]}\n'
-                f'Сумма: {result["amount"]:.2f} ₽\n'
+                f'Сумма: <b>{f_amount}</b> ₽\n'
                 f'Внес: @{result["username"]}\n'
                 f'КА: {result["contractor"]}\n\n'
                 f'Для просмотра:<code>/hcheck {result["op_id"]}</code>'
             ).replace(".", ","),
             parse_mode="HTML",
-            reply_markup=get_delete_keyboard(),
         )
 
 
 # ============= КНОПКИ =============
 
+@router.callback_query(F.data == 'not_check')
+async def not_check_callback(state: FSMContext):
+    data = await state.get_data()
 
 @router.callback_query(F.data == "skip_current")
 async def skip_current_file(callback: CallbackQuery, state: FSMContext):
@@ -418,14 +424,6 @@ async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     try:
         await callback.message.delete()
-        queue = data.get("queue", [])
-        for file_info in queue:
-            try:
-                await callback.bot.delete_message(
-                    callback.message.chat.id, file_info["msg_id"]
-                )
-            except Exception:
-                pass
 
         initial_msg_id = data.get("initial_msg_id")
         if initial_msg_id:
@@ -510,17 +508,20 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
     safe_payer = hd.quote(payer_info)
     safe_username = hd.quote(username)
     safe_contractor = hd.quote(contractor_name)
+    if amount == int(amount):
+        f_amount = f'{int(amount):,}'.replace(',', ' ')
+    else:
+        f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
 
     await message.answer(
-        f"✅ Баланс пополнен по чеку ({file_type})\n"
+        f"✅<b>Баланс пополнен</b> по чеку ({file_type})\n"
         f"ID:<code>{op_id}</code>\n"
         f"Плательщик: {safe_payer}\n"
-        f"Сумма: {amount:.2f} ₽\n"
+        f"Сумма: <b>{f_amount}</b> ₽\n"
         f"Внес: @{safe_username}\n"
         f"КА: {safe_contractor}\n\n"
         f"Для просмотра:<code>/hcheck {op_id}</code>",
         parse_mode="HTML",
-        reply_markup=get_delete_keyboard(),
     )
 
 
@@ -556,10 +557,15 @@ async def cmd_history_check(message: Message):
 
     safe_username = hd.quote(operation["username"])
     safe_contractor = hd.quote(contractor_name)
+    amount = operation["amount"]
+    if amount == int(amount):
+        f_amount = f'{int(amount):,}'.replace(',', ' ')
+    else:
+        f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
 
     operation_info = (
         f"📋 <b>Операция #{operation_id}</b>\n\n"
-        f'💰 Зачислено: {operation["amount"]:.2f} {operation["currency"]}\n'
+        f'💰 Зачислено: <b>{f_amount} {operation["currency"]}</b>\n'
         f'📅 Дата: {operation["timestamp"].strftime("%d.%m.%Y %H:%M")}\n'
         f"👤 Внес: @{safe_username}\n"
         f"🏢 КА: {safe_contractor}"

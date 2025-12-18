@@ -890,7 +890,7 @@ async def process_edit_check(message: Message, state: FSMContext):
         await state.clear()
 
 
-@router.callback_query(F.data == "cancel_edit")
+@router.callback_query(F.data == "cancel_edit", IsAdminFilter())
 async def cancel_edit_check(callback: CallbackQuery, state: FSMContext):
 
     try:

@@ -266,3 +266,37 @@ class OperationRepo(BaseRepository):
 
         result = await cls._fetchval(query, *params)
         return float(result)
+
+    @classmethod
+    async def update_operation(
+            cls,
+            operation_id: str,
+            amount: float = None,
+            description: str = None,
+    ) -> bool:
+        updates = []
+        params = []
+        param_idx = 1
+
+        if amount is not None:
+            updates.append(f"amount = ${param_idx}")
+            params.append(amount)
+            param_idx += 1
+
+        if description is not None:
+            updates.append(f"description = ${param_idx}")
+            params.append(description)
+            param_idx += 1
+
+        if not updates:
+            return False
+
+        params.append(operation_id)
+        query = f"""
+            UPDATE operations
+            SET {', '.join(updates)}
+            WHERE operation_id = ${param_idx}
+        """
+
+        await cls._execute(query, *params)
+        return True

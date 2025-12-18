@@ -374,13 +374,14 @@ async def show_all_results(bot, chat_id, state: FSMContext):
 
     if not results_queue:
         return
-
     for result in results_queue:
         amount = result["amount"]
         if amount == int(amount):
             f_amount = f'{int(amount):,}'.replace(',', ' ')
         else:
             f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+        builder = InlineKeyboardBuilder()
+        builder.button(text="Редактировать", callback_data=f"edit_check:{result["op_id"]}")
         await bot.send_message(
             chat_id=chat_id,
             text=(
@@ -393,6 +394,7 @@ async def show_all_results(bot, chat_id, state: FSMContext):
                 f'Для просмотра:<code>/hcheck {result["op_id"]}</code>'
             ).replace(".", ","),
             parse_mode="HTML",
+            reply_markup=builder.as_markup()
         )
 
 
@@ -510,7 +512,8 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         f_amount = f'{int(amount):,}'.replace(',', ' ')
     else:
         f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
-
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Редактировать", callback_data=f"edit_check:{op_id}")
     await message.answer(
         f"✅<b>Баланс пополнен</b> по чеку ({file_type})\n"
         f"ID:<code>{op_id}</code>\n"
@@ -520,6 +523,7 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         f"КА: {safe_contractor}\n\n"
         f"Для просмотра:<code>/hcheck {op_id}</code>",
         parse_mode="HTML",
+        reply_markup=builder.as_markup(),
     )
 
 
@@ -568,7 +572,11 @@ async def cmd_history_check(message: Message):
         f"Внес: @{safe_username}\n"
         f"КА: {safe_contractor}"
     )
-
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="Редактировать", callback_data=f"edit_check:{operation_id}"),
+        InlineKeyboardButton(text="Скрыть", callback_data="delete_message")
+    )
     if not os.path.exists(filepath):
         await message.answer(
             "❌ Файл/фото не найден на сервере\n" + operation_info,
@@ -584,14 +592,14 @@ async def cmd_history_check(message: Message):
             photo=FSInputFile(filepath),
             caption=operation_info,
             parse_mode="HTML",
-            reply_markup=get_delete_keyboard(),
+            reply_markup=builder.as_markup(),
         )
     else:
         await message.answer_document(
             document=FSInputFile(filepath),
             caption=operation_info,
             parse_mode="HTML",
-            reply_markup=get_delete_keyboard(),
+            reply_markup=builder.as_markup(),
         )
 
 
@@ -696,3 +704,200 @@ async def process_delete_cancel(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+
+@router.callback_query(F.data.startswith("edit_check:"), IsAdminFilter())
+async def start_edit_check(callback: CallbackQuery, state: FSMContext):
+    operation_id = callback.data.split(":")[1]
+
+    operation = await OperationRepo.get_check(operation_id)
+
+    if not operation:
+        await callback.answer("❌ Операция не найдена", show_alert=True)
+        return
+
+    description = operation["description"]
+    current_amount = operation["amount"]
+
+    payer_match = re.search(r"Плательщик: (.+?)\.", description)
+    current_payer = payer_match.group(1) if payer_match else "Не указано"
+
+    await state.set_state(CheckStates.editing_check)
+    await state.update_data(
+        editing_operation_id=operation_id,
+        editing_chat_id=operation["chat_id"],
+        old_amount=float(operation["amount"]),
+        old_payer=current_payer,
+        original_message_id=callback.message.message_id,
+        original_message_text=callback.message.caption or callback.message.text,
+    )
+
+    if current_amount == int(current_amount):
+        f_amount = f'{int(current_amount):,}'.replace(',', ' ')
+    else:
+        f_amount = f'{current_amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Отмена", callback_data="cancel_edit")
+
+    edit_msg = await callback.message.answer(
+        f"<b>Редактирование чека #{operation_id}</b>\n\n"
+        f"Текущие данные:\n"
+        f"💰 Сумма: <b>{f_amount}</b> ₽\n"
+        f"👤 Плательщик: <b>{current_payer}</b>\n\n"
+        f"Напишите новые данные в формате:\n"
+        f"• <code>сумма ФИО</code>\n"
+        f"• <code>сумма</code> (если ФИО не меняется)\n\n"
+        f"Пример: <code>7 500 Петров Иван</code>",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+
+    await state.update_data(edit_request_message_id=edit_msg.message_id)
+
+    await callback.answer()
+
+
+@router.message(CheckStates.editing_check, F.text)
+async def process_edit_check(message: Message, state: FSMContext):
+    await delete_message(message)
+
+    text = message.text.strip()
+
+    match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
+    if not match:
+        await temp_msg(
+            message,
+            "❌ <b>Неверный формат!</b>\n\n"
+            "Напишите: <code>сумма ФИО</code>\n"
+            "Или просто: <code>сумма</code>\n"
+            "Пример: <code>7 500 Петров Иван</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        amount_str = match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
+        new_amount = float(amount_str)
+
+        if new_amount <= 0:
+            await temp_msg(message, "❌ Сумма должна быть больше нуля!")
+            return
+
+        new_payer = match.group(2).strip() if match.group(2) else None
+
+        data = await state.get_data()
+        operation_id = data["editing_operation_id"]
+        chat_id = data["editing_chat_id"]
+        old_amount = float(data["old_amount"])
+        old_payer = data["old_payer"]
+        original_message_id = data.get("original_message_id")
+        original_message_text = data.get("original_message_text")
+        edit_request_message_id = data.get("edit_request_message_id")
+
+        if not new_payer:
+            new_payer = old_payer
+
+        operation = await OperationRepo.get_check(operation_id)
+        description = operation["description"]
+
+        file_match = re.search(r"Файл: (.+)$", description)
+        filename = file_match.group(1) if file_match else "unknown"
+
+        type_match = re.search(r"Тип: (.+?)\.", description)
+        file_type = type_match.group(1) if type_match else "фото"
+
+        new_description = (
+            f"Плательщик: {new_payer}. "
+            f"Зачислено: {new_amount:.2f} ₽. "
+            f"Тип: {file_type}. "
+            f"Файл: {filename}"
+        )
+
+        balance_diff = new_amount - old_amount
+        await ChatRepo.add_to_balance(chat_id, balance_diff)
+
+        await OperationRepo.update_operation(
+            operation_id,
+            amount=new_amount,
+            description=new_description
+        )
+
+        contractor_name = await ChatRepo.get_contractor_name(chat_id)
+        username = operation["username"]
+
+        if new_amount == int(new_amount):
+            f_new = f'{int(new_amount):,}'.replace(',', ' ')
+        else:
+            f_new = f'{new_amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        if old_amount == int(old_amount):
+            f_old = f'{int(old_amount):,}'.replace(',', ' ')
+        else:
+            f_old = f'{old_amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        try:
+            if edit_request_message_id:
+                await message.bot.delete_message(message.chat.id, edit_request_message_id)
+        except Exception:
+            pass
+
+        try:
+            if original_message_id:
+                safe_payer = hd.quote(new_payer)
+                safe_username = hd.quote(username)
+                safe_contractor = hd.quote(contractor_name)
+
+                builder = InlineKeyboardBuilder()
+                builder.button(text="Редактировать", callback_data=f"edit_check:{operation_id}")
+                builder.button(text="Скрыть", callback_data="delete_message")
+
+                new_text = (
+                    f"✅ <b>Баланс пополнен</b> по чеку ({file_type})\n"
+                    f"ID: <code>{operation_id}</code>\n"
+                    f"Плательщик: {safe_payer}\n"
+                    f"Сумма: <b>{f_new}</b> ₽\n"
+                    f"Внес: @{safe_username}\n"
+                    f"КА: {safe_contractor}\n\n"
+                    f"Для просмотра: <code>/hcheck {operation_id}</code>\n\n"
+                    f"<i>✏️ Изменено: было {f_old} ₽, {old_payer}</i>"
+                ).replace(".", ",")
+
+                try:
+                    await message.bot.edit_message_caption(
+                        chat_id=message.chat.id,
+                        message_id=original_message_id,
+                        caption=new_text,
+                        parse_mode="HTML",
+                        reply_markup=builder.as_markup(),
+                    )
+                except Exception:
+                    await message.bot.edit_message_text(
+                        chat_id=message.chat.id,
+                        message_id=original_message_id,
+                        text=new_text,
+                        parse_mode="HTML",
+                        reply_markup=builder.as_markup(),
+                    )
+        except Exception as e:
+            print(f"Не удалось отредактировать исходное сообщение: {e}")
+
+        await state.clear()
+
+    except ValueError:
+        await temp_msg(message, "❌ Неверный формат суммы")
+    except Exception as e:
+        await temp_msg(message, f"❌ Ошибка при обновлении: {e}")
+        await state.clear()
+
+
+@router.callback_query(F.data == "cancel_edit")
+async def cancel_edit_check(callback: CallbackQuery, state: FSMContext):
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    await state.clear()
+    await callback.answer("❌ Редактирование отменено")
+

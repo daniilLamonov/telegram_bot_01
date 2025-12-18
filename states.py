@@ -4,6 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 class CheckStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_file = State()
+    editing_check = State()
 
 
 class ReconciliationStates(StatesGroup):

@@ -229,7 +229,6 @@ class OperationRepo(BaseRepository):
     async def get_all_checks_by_date(
             cls, start_date: datetime, end_date: datetime
     ) -> List[dict]:
-        """Получает все чеки от всех контрагентов за период"""
         results = await cls._fetch(
             """
             SELECT operation_id, chat_id, username, amount, timestamp, description
@@ -244,3 +243,26 @@ class OperationRepo(BaseRepository):
         )
         return [dict(row) for row in results]
 
+    @classmethod
+    async def get_commissions_operations(
+            cls,
+            chat_id: int,
+            start_date: datetime | None = None,
+            end_date: datetime | None = None
+    ) -> float:
+
+        query = """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM operations
+                WHERE chat_id = $1
+                  AND operation_type = 'комиссия' \
+                """
+
+        params = [chat_id]
+
+        if start_date and end_date:
+            query += " AND timestamp >= $2 AND timestamp < $3"
+            params.extend([start_date, end_date])
+
+        result = await cls._fetchval(query, *params)
+        return float(result)

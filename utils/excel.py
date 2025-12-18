@@ -22,8 +22,11 @@ async def export_to_excel(
             operations = await OperationRepo.get_operations_with_period(
                 chat_id, start_date, end_date
             )
+            chat_commissions = await OperationRepo.get_commissions_operations(chat_id, start_date, end_date)
         else:
             operations = await OperationRepo.get_operations(chat_id)
+            chat_commissions = await OperationRepo.get_commissions_operations(chat_id)
+
 
         balance_data = {
             "Контрагент": [
@@ -38,6 +41,7 @@ async def export_to_excel(
             ],
             "Баланс RUB": [float(chat_info["balance_rub"]) if chat_info else 0],
             "Баланс USDT": [float(chat_info["balance_usdt"]) if chat_info else 0],
+            "Комиссионные USDT": [chat_commissions if chat_info else 0],
             "Создан": [chat_info["created_at"] if chat_info else None],
             "Обновлен": [chat_info["updated_at"] if chat_info else None],
         }
@@ -55,6 +59,7 @@ async def export_to_excel(
 
         balance_data = []
         for chat in all_chats:
+            chat_commissions = await OperationRepo.get_commissions_operations(chat["chat_id"], start_date, end_date)
             balance_data.append(
                 {
                     "Chat ID": chat["chat_id"],
@@ -70,6 +75,7 @@ async def export_to_excel(
                     "Баланс USDT": (
                         float(chat["balance_usdt"]) if chat["balance_usdt"] else 0
                     ),
+                    "Комиссионные USDT": chat_commissions if chat_commissions else 0,
                     "Создан": chat["created_at"],
                     "Обновлен": chat["updated_at"],
                 }
@@ -77,7 +83,6 @@ async def export_to_excel(
 
         df_balance = pd.DataFrame(balance_data)
 
-    # ======= DataFrame операций =======
     df_operations = (
         pd.DataFrame([dict(row) for row in operations])
         if operations
@@ -108,11 +113,8 @@ async def export_to_excel(
             cols = ["Контрагент"] + cols
             df_operations = df_operations[cols]
 
-    # ======= Функция для красивого оформления =======
     def style_worksheet(worksheet, df, header_color="4472C4", stripe_color="D9E1F2"):
-        """Применяет красивое оформление к листу Excel"""
 
-        # Стили
         header_font = Font(bold=True, color="FFFFFF", size=11)
         header_fill = PatternFill(
             start_color=header_color, end_color=header_color, fill_type="solid"
@@ -128,7 +130,6 @@ async def export_to_excel(
         )
         center_alignment = Alignment(horizontal="center", vertical="center")
 
-        # Оформляем заголовки
         for col_num in range(1, len(df.columns) + 1):
             cell = worksheet.cell(row=1, column=col_num)
             cell.font = header_font
@@ -136,51 +137,39 @@ async def export_to_excel(
             cell.alignment = center_alignment
             cell.border = border
 
-        # Оформляем строки данных
         for row_num in range(2, len(df) + 2):
             for col_num in range(1, len(df.columns) + 1):
                 cell = worksheet.cell(row=row_num, column=col_num)
                 cell.border = border
                 cell.alignment = Alignment(vertical="center")
 
-                # Чередующиеся цвета строк (зебра)
                 if row_num % 2 == 0:
                     cell.fill = stripe_fill
 
-        # Автоподбор ширины столбцов
         for col_num in range(1, len(df.columns) + 1):
             column_letter = get_column_letter(col_num)
-            max_length = 0
 
-            # Проверяем длину заголовка
             header_cell = worksheet.cell(row=1, column=col_num)
             max_length = len(str(header_cell.value))
 
-            # Проверяем длину данных (первые 100 строк для скорости)
             for row_num in range(2, min(102, len(df) + 2)):
                 cell = worksheet.cell(row=row_num, column=col_num)
                 cell_length = len(str(cell.value))
                 if cell_length > max_length:
                     max_length = cell_length
 
-            # Устанавливаем ширину (с ограничением)
             adjusted_width = min(max_length + 2, 50)
             worksheet.column_dimensions[column_letter].width = adjusted_width
 
-        # Закрепляем первую строку
         worksheet.freeze_panes = "A2"
 
-    # ✅ Функция для форматирования процента
     def format_percent(percent):
-        """Если процент целый - возвращает int, иначе float"""
         if percent == int(percent):
             return int(percent)
         return percent
 
-    # ======= Создаем Excel =======
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        # 1-й лист: балансы
         if chat_id:
             df_balance.to_excel(writer, sheet_name="Баланс чата", index=False)
             style_worksheet(
@@ -205,8 +194,8 @@ async def export_to_excel(
             style_worksheet(
                 worksheet, df_operations, header_color="4472C4", stripe_color="D9E1F2"
             )
+            worksheet.auto_filter.ref = worksheet.dimensions
 
-            # ✅ Добавляем ячейку с количеством чеков СПРАВА от таблицы
             total_checks = len(
                 df_operations[df_operations["Тип операции"] == "пополнение_руб_чек"]
             )
@@ -214,14 +203,12 @@ async def export_to_excel(
             last_col = len(df_operations.columns)
             col_letter_label = get_column_letter(
                 last_col + 2
-            )  # +2 для пропуска столбца
+            )
             col_letter_value = get_column_letter(last_col + 3)
 
-            # Записываем заголовок и значение
             worksheet[f"{col_letter_label}1"] = "ЧЕКИ:"
             worksheet[f"{col_letter_value}1"] = total_checks
 
-            # Стилизация для "ЧЕКИ:"
             worksheet[f"{col_letter_label}1"].font = Font(
                 bold=True, size=12, color="FFFFFF"
             )
@@ -238,7 +225,6 @@ async def export_to_excel(
                 bottom=Side(style="thick"),
             )
 
-            # Стилизация для значения
             worksheet[f"{col_letter_value}1"].font = Font(
                 bold=True, size=14, color="FFFFFF"
             )
@@ -255,41 +241,21 @@ async def export_to_excel(
                 bottom=Side(style="thick"),
             )
 
-            # Ширина столбцов
             worksheet.column_dimensions[col_letter_label].width = 10
             worksheet.column_dimensions[col_letter_value].width = 8
 
-        # 3-й лист: выдача
+        # 3-й лист: Отчет
         if not df_operations.empty and "Сумма" in df_operations.columns:
             df_checks = df_operations[
                 df_operations["Тип операции"] == "пополнение_руб_чек"
-            ].copy()
+                ].copy()
 
             if not df_checks.empty:
-                commission_map = {}
-                if (
-                    "Контрагент" in df_balance.columns
-                    and "Комиссия %" in df_balance.columns
-                ):
-                    commission_map = dict(
-                        zip(df_balance["Контрагент"], df_balance["Комиссия %"])
-                    )
-
-                df_checks["Комиссия %"] = (
-                    df_checks["Контрагент"].map(commission_map).fillna(0.0)
-                )
-
                 grouped = df_checks.groupby("Контрагент", as_index=False).agg(
-                    {"Сумма": "sum", "Комиссия %": "max"}
+                    {"Сумма": ["sum", "count"]}
                 )
 
-                grouped["Сумма"] = grouped["Сумма"].astype(float)
-                grouped["Комиссия %"] = grouped["Комиссия %"].astype(float)
-
-                grouped["Сумма комиссии"] = (
-                    grouped["Сумма"] * grouped["Комиссия %"] / 100
-                )
-                grouped["К выдаче"] = grouped["Сумма"] - grouped["Сумма комиссии"]
+                grouped.columns = ["Контрагент", "Общая сумма чеков (руб)", "Количество чеков"]
 
                 period_text = (
                     f"{start_date.strftime('%d.%m.%Y')}–{end_date.strftime('%d.%m.%Y')}"
@@ -298,42 +264,67 @@ async def export_to_excel(
                 )
                 grouped.insert(0, "Период", period_text)
 
-                grouped.rename(
-                    columns={
-                        "Сумма": "Общая сумма чеков (руб)",
-                        "Комиссия %": "Комиссия (%)",
-                        "Сумма комиссии": "Сумма комиссии (руб)",
-                        "К выдаче": "К выдаче (руб)",
-                    },
-                    inplace=True,
-                )
+                grouped["Общая сумма чеков (руб)"] = grouped["Общая сумма чеков (руб)"].astype(float)
+                grouped["Количество чеков"] = grouped["Количество чеков"].astype(int)
 
-                grouped.to_excel(writer, sheet_name="Выдача", index=False)
+                total_amount = grouped["Общая сумма чеков (руб)"].sum()
+                total_count = grouped["Количество чеков"].sum()
+
+                totals_row = pd.DataFrame({
+                    "Период": [period_text],
+                    "Контрагент": ["ИТОГО"],
+                    "Общая сумма чеков (руб)": [total_amount],
+                    "Количество чеков": [total_count]
+                })
+
+                grouped = pd.concat([grouped, totals_row], ignore_index=True)
+
+                grouped.to_excel(writer, sheet_name="Отчет", index=False)
+
+                worksheet = writer.sheets["Отчет"]
+
                 style_worksheet(
-                    writer.sheets["Выдача"],
-                    grouped,
+                    worksheet,
+                    grouped.iloc[:-1],
                     header_color="C55A11",
                     stripe_color="FCE4D6",
                 )
+
+                from openpyxl.styles import Font, PatternFill, Alignment
+
+                total_fill = PatternFill(start_color="A04000", end_color="A04000", fill_type="solid")
+                total_font = Font(bold=True, color="FFFFFF")
+
+                last_row = len(grouped) + 1
+                for col in range(1, 5):
+                    cell = worksheet.cell(row=last_row, column=col)
+                    cell.fill = total_fill
+                    cell.font = total_font
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+                for row in worksheet.iter_rows(min_row=2, max_row=len(grouped) + 1, min_col=3, max_col=4):
+                    for cell in row:
+                        if cell.row == last_row:
+                            cell.number_format = '#,##0'
+                        else:
+                            cell.number_format = '#,##0'
 
         # ✅ 4-й лист: чеки для импорта (только чеки)
         if not df_operations.empty and "Сумма" in df_operations.columns:
             df_checks_import = df_operations[
                 df_operations["Тип операции"] == "пополнение_руб_чек"
-            ].copy()
+                ].copy()
 
             if not df_checks_import.empty:
-                # Получаем комиссии для каждого контрагента
                 commission_map = {}
                 if (
-                    "Контрагент" in df_balance.columns
-                    and "Комиссия %" in df_balance.columns
+                        "Контрагент" in df_balance.columns
+                        and "Комиссия %" in df_balance.columns
                 ):
                     commission_map = dict(
                         zip(df_balance["Контрагент"], df_balance["Комиссия %"])
                     )
 
-                # Формируем данные для 4-го листа
                 import_data = []
                 for _, row in df_checks_import.iterrows():
                     contractor = row["Контрагент"]
@@ -342,19 +333,18 @@ async def export_to_excel(
 
                     import_data.append(
                         {
-                            "A": "",  # Пусто
-                            "B": "да",  # да
-                            "C": "",  # Пусто
-                            "D-E": contractor,  # Контрагент (объединённые столбцы D и E)
-                            "F-G": "QR",  # QR (объединённые столбцы F и G)
-                            "H": amount,  # Сумма чека
-                            "I": f"{format_percent(commission_percent)}%",  # ✅ Процент (целый без точки)
+                            "A": "",
+                            "B": "да",
+                            "C": "",
+                            "D-E": contractor,
+                            "F-G": "QR",
+                            "H": (int(amount) if amount == int(amount) else amount),
+                            "I": f"{format_percent(commission_percent)}%",
                         }
                     )
 
                 df_import = pd.DataFrame(import_data)
 
-                # Записываем БЕЗ заголовков
                 df_import.to_excel(
                     writer,
                     sheet_name="Чеки для импорта",
@@ -363,64 +353,49 @@ async def export_to_excel(
                     startrow=0,
                 )
 
-                # Ручное оформление
                 ws_import = writer.sheets["Чеки для импорта"]
 
-                # Объединяем ячейки и заполняем данные
                 row_num = 1
                 for idx, row_data in enumerate(import_data):
-                    # A - пусто
                     ws_import[f"A{row_num}"] = ""
 
-                    # B - "да"
                     ws_import[f"B{row_num}"] = "Да"
                     ws_import[f"B{row_num}"].alignment = Alignment(
                         horizontal="center", vertical="center"
                     )
-                    ws_import[f"B{row_num}"].font = Font(bold=True)
+                    ws_import[f"B{row_num}"].font = Font(name='Arial', bold=True)
 
-                    # C - пусто
                     ws_import[f"C{row_num}"] = ""
 
-                    # D-E - контрагент (объединяем)
                     ws_import.merge_cells(f"D{row_num}:E{row_num}")
                     ws_import[f"D{row_num}"] = row_data["D-E"]
                     ws_import[f"D{row_num}"].alignment = Alignment(
                         horizontal="center", vertical="center"
                     )
-                    ws_import[f"D{row_num}"].font = Font(bold=True)
+                    ws_import[f"D{row_num}"].font = Font(name='Arial', bold=True)
 
-                    # F-G - QR (объединяем)
                     ws_import.merge_cells(f"F{row_num}:G{row_num}")
                     ws_import[f"F{row_num}"] = "QR"
                     ws_import[f"F{row_num}"].alignment = Alignment(
                         horizontal="center", vertical="center"
                     )
-                    ws_import[f"F{row_num}"].font = Font(bold=True)
+                    ws_import[f"F{row_num}"].font = Font(name='Arial', bold=True)
 
-                    # H - сумма чека
                     ws_import[f"H{row_num}"] = row_data["H"]
                     ws_import[f"H{row_num}"].alignment = Alignment(
-                        horizontal="right", vertical="center"
+                        horizontal="center", vertical="center"
                     )
-                    ws_import[f"H{row_num}"].number_format = "0.00"
+                    ws_import[f"H{row_num}"].font = Font(name='Arial')
 
-                    # I - процент комиссии ✅
                     commission_value = row_data["I"]
                     ws_import[f"I{row_num}"] = commission_value
                     ws_import[f"I{row_num}"].alignment = Alignment(
-                        horizontal="right", vertical="center"
+                        horizontal="center", vertical="center"
                     )
-
-                    # ✅ Формат: если целое - без точки, если дробное - с точкой
-                    if isinstance(commission_value, int):
-                        ws_import[f"I{row_num}"].number_format = "0"
-                    else:
-                        ws_import[f"I{row_num}"].number_format = "0.00"
+                    ws_import[f"I{row_num}"].font = Font(name='Arial')
 
                     row_num += 1
 
-                # Ширина столбцов
                 ws_import.column_dimensions["A"].width = 5
                 ws_import.column_dimensions["B"].width = 8
                 ws_import.column_dimensions["C"].width = 5
@@ -438,36 +413,21 @@ async def export_to_excel(
 async def export_comparison_report(
         only_in_file: List[dict],
         only_in_db: List[dict],
-        target_date: datetime,
-        total_file: int,
-        total_db: int
 ) -> BytesIO:
-    """
-    Генерирует Excel отчет о расхождениях между файлом и БД
 
-    Args:
-        only_in_file: Операции есть в файле, но нет в БД (красные)
-        only_in_db: Операции есть в БД, но нет в файле (желтые)
-        target_date: Дата сравнения
-        total_file: Всего операций в файле
-        total_db: Всего операций в БД
-    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Расхождения"
 
-    # Стили
     red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
     yellow_fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=12)
     center_align = Alignment(horizontal="center", vertical="center")
 
-    # Заголовки
-    headers = ["Источник", "Сумма (₽)", "Дата/Время", "Контрагент/Chat", "Username", "Примечание"]
+    headers = ["Источник", "Сумма (₽)", "Дата/Время", "Контрагент/Chat", "Добавил", "ID"]
     ws.append(headers)
 
-    # Форматируем заголовок
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_num)
         cell.fill = header_fill
@@ -476,23 +436,21 @@ async def export_comparison_report(
 
     row = 2
 
-    # Красные - есть в файле, нет в БД
     if only_in_file:
         for op in only_in_file:
             ws.append([
                 "Файл (нет в БД)",
                 op['amount'],
                 op['datetime'].strftime('%d.%m.%Y %H:%M:%S'),
-                op['contractor'],
                 "-",
-                f"ID: {op['transaction_id']}"
+                "-",
+                f"{op['transaction_id']}"
             ])
             for col in range(1, 7):
                 cell = ws.cell(row=row, column=col)
                 cell.fill = red_fill
             row += 1
 
-    # Желтые - есть в БД, нет в файле
     if only_in_db:
         for op in only_in_db:
             chat_name = await ChatRepo.get_contractor_name(op['chat_id'])
@@ -500,16 +458,15 @@ async def export_comparison_report(
                 "БД (нет в файле)",
                 float(op['amount']),
                 op['timestamp'].strftime('%d.%m.%Y %H:%M:%S'),
-                f"{chat_name} (ID: {op['chat_id']})",
+                f"{chat_name}",
                 op['username'],
-                f"Op ID: {op['operation_id']}"
+                f"{op['operation_id']}"
             ])
             for col in range(1, 7):
                 cell = ws.cell(row=row, column=col)
                 cell.fill = yellow_fill
             row += 1
 
-    # Автоширина колонок
     for column in ws.columns:
         max_length = 0
         column_letter = column[0].column_letter
@@ -522,21 +479,7 @@ async def export_comparison_report(
         adjusted_width = min(max_length + 2, 50)
         ws.column_dimensions[column_letter].width = adjusted_width
 
-    # Добавляем лист со статистикой
-    ws_stats = wb.create_sheet("Статистика")
-    ws_stats.append(["Параметр", "Значение"])
-    ws_stats.append(["Дата сравнения", target_date.strftime('%d.%m.%Y')])
-    ws_stats.append(["Всего в файле", total_file])
-    ws_stats.append(["Всего в БД", total_db])
-    ws_stats.append(["Только в файле (красные)", len(only_in_file)])
-    ws_stats.append(["Только в БД (желтые)", len(only_in_db)])
-    ws_stats.append(["Совпало операций", total_file - len(only_in_file)])
 
-    # Форматируем статистику
-    for row in range(1, 8):
-        ws_stats.cell(row=row, column=1).font = Font(bold=True)
-
-    # Сохраняем в BytesIO
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)

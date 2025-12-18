@@ -246,12 +246,6 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
 @router.message(CheckStates.waiting_for_amount, F.text)
 async def receive_amount_and_payer(message: Message, state: FSMContext):
     await delete_message(message)
-    data = await state.get_data()
-    current_file = data.get("current_file")
-
-    if current_file and current_file.get("user_id"):
-        if message.from_user.id != current_file["user_id"]:
-            return
 
     text = message.text.strip()
     match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
@@ -407,23 +401,15 @@ async def show_all_results(bot, chat_id, state: FSMContext):
 @router.callback_query(F.data == "skip_current")
 async def skip_current_file(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    current_file = data.get("current_file")
-
-    if current_file and current_file.get("user_id"):
-        if callback.from_user.id != current_file["user_id"]:
-            await callback.answer(
-                "⚠️ Эта кнопка для другого пользователя",
-                show_alert=True
-            )
-            return
-
-    await callback.answer("⏭ Пропущено")
 
     try:
-        await callback.message.delete()
+        current_bot_msg = data.get("current_bot_msg")
+        if current_bot_msg:
+            await callback.bot.delete_message(callback.message.chat.id, current_bot_msg)
     except Exception:
         pass
 
+    # Переходим к следующему файлу
     queue = data.get("queue", [])
     if queue:
         queue.pop(0)
@@ -435,36 +421,19 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "cancel_all")
 async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    queue = data.get("queue", [])
 
-    user_has_files = any(
-        f.get("user_id") == callback.from_user.id
-        for f in queue
-    )
+    messages_to_delete = [
+        data.get("current_bot_msg"),
+        data.get("processing_msg_id"),
+        data.get("initial_msg_id"),
+    ]
 
-    if queue and not user_has_files:
-        await callback.answer(
-            "⚠️ В очереди нет ваших файлов",
-            show_alert=True
-        )
-        return
-
-    await callback.answer("🗑 Отменено")
-
-    try:
-        await callback.message.delete()
-
-        initial_msg_id = data.get("initial_msg_id")
-        if initial_msg_id:
-            await callback.bot.delete_message(callback.message.chat.id, initial_msg_id)
-
-        processing_msg_id = data.get("processing_msg_id")
-        if processing_msg_id:
-            await callback.bot.delete_message(
-                callback.message.chat.id, processing_msg_id
-            )
-    except Exception:
-        pass
+    for msg_id in messages_to_delete:
+        if msg_id:
+            try:
+                await callback.bot.delete_message(callback.message.chat.id, msg_id)
+            except Exception:
+                pass
 
     await state.clear()
 
@@ -594,10 +563,10 @@ async def cmd_history_check(message: Message):
 
     operation_info = (
         f"📋 <b>Операция #{operation_id}</b>\n\n"
-        f'💰 Зачислено: <b>{f_amount} {operation["currency"]}</b>\n'
-        f'📅 Дата: {operation["timestamp"].strftime("%d.%m.%Y %H:%M")}\n'
-        f"👤 Внес: @{safe_username}\n"
-        f"🏢 КА: {safe_contractor}"
+        f'Зачислено: <b>{f_amount} {operation["currency"]}</b>\n'
+        f'Дата: {operation["timestamp"].strftime("%d.%m.%Y %H:%M")}\n'
+        f"Внес: @{safe_username}\n"
+        f"КА: {safe_contractor}"
     )
 
     if not os.path.exists(filepath):

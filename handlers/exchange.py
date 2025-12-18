@@ -15,7 +15,7 @@ router = Router(name="exchange")
 @router.message(Command("ch"), IsAdminFilter())
 async def cmd_ch(message: Message):
     await delete_message(message)
-    match = re.search(r"/ch\s+(\d+(?:\.\d+)?)\s+([\d\s.,]+)", message.text)
+    match = re.search(r"/ch\s+(\d+(?:[.,]\d+)?)\s+([\d\s.,]+)", message.text)
     if not match:
         await temp_msg(
             message,
@@ -54,9 +54,9 @@ async def cmd_ch(message: Message):
             )
             return
         amount_usdt = amount_rub / rate
-
+        commission = await ChatRepo.get_commission(chat_id)
         amount_after_commission, commission_amount = await calculate_commission(
-            chat_id, amount_usdt, user_id, username
+            chat_id, amount_usdt, user_id, username, commission
         )
 
         new_balance_rub = balance_rub - amount_rub
@@ -80,7 +80,7 @@ async def cmd_ch(message: Message):
                 f"Обмен выполнен ✅\n\n"
                 f"{amount_rub:.2f} ₽ списано \n"
                 f"{rate} курс\n"
-                f"{commission_amount:.2f}$ комиссия в чате ({rate}%)\n"
+                f"{commission_amount:.2f}$ комиссия в чате ({commission}%)\n"
                 f"{amount_after_commission:.2f}$ пополнен баланс"
             ).replace(".", ","),
             reply_markup=get_delete_keyboard(),
@@ -89,8 +89,7 @@ async def cmd_ch(message: Message):
         await temp_msg(message, "Ошибка: введите корректные значения")
 
 
-async def calculate_commission(chat_id, amount_usdt, user_id, username):
-    commission = await ChatRepo.get_commission(chat_id)
+async def calculate_commission(chat_id, amount_usdt, user_id, username, commission):
     commission_amount = amount_usdt * (commission / 100)
     amount_after_commission = amount_usdt - commission_amount
 

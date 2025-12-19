@@ -115,12 +115,12 @@ async def cmd_chall(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
         chats = await ChatRepo.get_all_chats()
-        # start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=1)).replace(
-        #     hour=0, minute=0, second=0, microsecond=0
-        # )
-        start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=0)).replace(
+        start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
+        # start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=0)).replace(
+        #     hour=0, minute=0, second=0, microsecond=0
+        # )
         end_date = start_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         report_lines = [f"<b>Массовый обмен по курсу: {rate}</b>\n"]
@@ -204,5 +204,6 @@ async def calculate_commission(chat_id, amount_usdt, user_id, username, commissi
         "комиссия",
         commission_amount,
         "USDT",
+        description=f"Комиссия на момент обмена: {commission}%"
     )
     return amount_after_commission, commission_amount

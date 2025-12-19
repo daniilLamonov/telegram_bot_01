@@ -273,6 +273,7 @@ class OperationRepo(BaseRepository):
             operation_id: str,
             amount: float = None,
             description: str = None,
+            timestamp: datetime = None,
     ) -> bool:
         updates = []
         params = []
@@ -288,15 +289,20 @@ class OperationRepo(BaseRepository):
             params.append(description)
             param_idx += 1
 
+        if timestamp is not None:
+            updates.append(f"timestamp = ${param_idx}")
+            params.append(timestamp)
+            param_idx += 1
+
         if not updates:
             return False
 
         params.append(operation_id)
         query = f"""
-            UPDATE operations
-            SET {', '.join(updates)}
-            WHERE operation_id = ${param_idx}
-        """
+                UPDATE operations
+                SET {', '.join(updates)}
+                WHERE operation_id = ${param_idx}
+            """
 
         await cls._execute(query, *params)
         return True

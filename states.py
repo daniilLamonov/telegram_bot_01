@@ -5,6 +5,7 @@ class CheckStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_file = State()
     editing_check = State()
+    editing_date = State()
 
 
 class ReconciliationStates(StatesGroup):

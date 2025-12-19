@@ -381,7 +381,6 @@ async def show_all_results(bot, chat_id, state: FSMContext):
         else:
             f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
         builder = InlineKeyboardBuilder()
-        builder.button(text="Редактировать", callback_data=f"edit_check:{result["op_id"]}")
         await bot.send_message(
             chat_id=chat_id,
             text=(
@@ -513,7 +512,6 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
     else:
         f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
     builder = InlineKeyboardBuilder()
-    builder.button(text="Редактировать", callback_data=f"edit_check:{op_id}")
     await message.answer(
         f"✅<b>Баланс пополнен</b> по чеку ({file_type})\n"
         f"ID:<code>{op_id}</code>\n"
@@ -575,6 +573,7 @@ async def cmd_history_check(message: Message):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="Редактировать", callback_data=f"edit_check:{operation_id}"),
+        InlineKeyboardButton(text="Другая дата", callback_data=f"edit_date:{operation_id}"),
         InlineKeyboardButton(text="Скрыть", callback_data="delete_message")
     )
     if not os.path.exists(filepath):
@@ -843,22 +842,20 @@ async def process_edit_check(message: Message, state: FSMContext):
 
         try:
             if original_message_id:
-                safe_payer = hd.quote(new_payer)
                 safe_username = hd.quote(username)
                 safe_contractor = hd.quote(contractor_name)
 
                 builder = InlineKeyboardBuilder()
                 builder.button(text="Редактировать", callback_data=f"edit_check:{operation_id}")
+                builder.button(text="Другая дата", callback_data=f"edit_date:{operation_id}")
                 builder.button(text="Скрыть", callback_data="delete_message")
 
                 new_text = (
-                    f"✅ <b>Баланс пополнен</b> по чеку ({file_type})\n"
-                    f"ID: <code>{operation_id}</code>\n"
-                    f"Плательщик: {safe_payer}\n"
-                    f"Сумма: <b>{f_new}</b> ₽\n"
+                    f"📋 <b>Операция #{operation_id}</b>\n\n"
+                    f"Зачислено: <b>{f_new} RUB</b>\n"
+                    f"Дата: {operation['timestamp'].strftime('%d.%m.%Y %H:%M')}\n"
                     f"Внес: @{safe_username}\n"
                     f"КА: {safe_contractor}\n\n"
-                    f"Для просмотра: <code>/hcheck {operation_id}</code>\n\n"
                     f"<i>✏️ Изменено: было {f_old} ₽, {old_payer}</i>"
                 ).replace(".", ",")
 
@@ -881,7 +878,6 @@ async def process_edit_check(message: Message, state: FSMContext):
         except Exception as e:
             print(f"Не удалось отредактировать исходное сообщение: {e}")
 
-        await state.clear()
 
     except ValueError:
         await temp_msg(message, "❌ Неверный формат суммы")
@@ -901,3 +897,192 @@ async def cancel_edit_check(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("❌ Редактирование отменено")
 
+
+
+# ============= ИЗМЕНЕНИЕ ДАТЫ ЧЕКА =============
+
+@router.callback_query(F.data.startswith("edit_date:"))
+async def start_edit_date(callback: CallbackQuery, state: FSMContext):
+    operation_id = callback.data.split(":")[1]
+
+    operation = await OperationRepo.get_check(operation_id)
+
+    if not operation:
+        await callback.answer("❌ Операция не найдена", show_alert=True)
+        return
+
+    current_date = operation["timestamp"]
+
+    await state.set_state(CheckStates.editing_date)
+    await state.update_data(
+        editing_operation_id=operation_id,
+        editing_chat_id=operation["chat_id"],
+        old_timestamp=current_date,
+        original_message_id=callback.message.message_id,
+        original_message_text=callback.message.caption or callback.message.text,
+    )
+
+    formatted_date = current_date.strftime("%d.%m.%Y %H:%M")
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отмена", callback_data="cancel_edit_date")
+
+    edit_msg = await callback.message.answer(
+        f"📅 <b>Изменение даты чека #{operation_id}</b>\n\n"
+        f"Текущая дата: <b>{formatted_date}</b>\n\n"
+        f"Введите новую дату:\n"
+        f"• <code>ДД.ММ.ГГГГ</code> - время будет 00:00\n\n"
+        f"Примеры:\n"
+        f"<code>15.12.2025</code>",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+
+    await state.update_data(edit_request_message_id=edit_msg.message_id)
+
+    await callback.answer()
+
+
+@router.message(CheckStates.editing_date, F.text)
+async def process_edit_date(message: Message, state: FSMContext):
+    await delete_message(message)
+
+    text = message.text.strip()
+
+    match = re.search(r"^(\d{2})\.(\d{2})\.(\d{4})$", text)
+
+    if not match:
+        await temp_msg(
+            message,
+            "❌ <b>Неверный формат даты!</b>\n\n"
+            "Используйте:\n"
+            "• <code>ДД.ММ.ГГГГ</code>\n\n"
+            "Примеры:\n"
+            "<code>15.12.2025</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        day, month, year = match.groups()
+        new_timestamp = datetime(
+            int(year), int(month), int(day),
+            0, 0
+        )
+
+        if new_timestamp > datetime.now():
+            await temp_msg(
+                message,
+                "❌ Нельзя установить дату в будущем!"
+            )
+            return
+
+
+        data = await state.get_data()
+        operation_id = data["editing_operation_id"]
+        chat_id = data["editing_chat_id"]
+        old_timestamp = data["old_timestamp"]
+        original_message_id = data.get("original_message_id")
+        edit_request_message_id = data.get("edit_request_message_id")
+
+        operation = await OperationRepo.get_check(operation_id)
+        description = operation["description"]
+
+        old_date_str = old_timestamp.strftime("%d.%m.%Y %H:%M")
+        new_date_str = new_timestamp.strftime("%d.%m.%Y %H:%M")
+
+        if "Дата изменена:" in description:
+            description = re.sub(
+                r"Дата изменена:.*?\.",
+                f"Дата изменена: было {old_date_str}, стало {new_date_str}.",
+                description
+            )
+        else:
+            description = f" Дата изменена: было {old_date_str}, стало {new_date_str}." + description
+
+        await OperationRepo.update_operation(
+            operation_id,
+            timestamp=new_timestamp,
+            description=description
+        )
+
+        contractor_name = await ChatRepo.get_contractor_name(chat_id)
+        username = operation["username"]
+        amount = operation["amount"]
+
+        if amount == int(amount):
+            f_amount = f'{int(amount):,}'.replace(',', ' ')
+        else:
+            f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        payer_match = re.search(r"Плательщик: (.+?)\.", description)
+        payer = payer_match.group(1) if payer_match else "Не указано"
+
+        type_match = re.search(r"Тип: (.+?)\.", description)
+        file_type = type_match.group(1) if type_match else "фото"
+
+        try:
+            if edit_request_message_id:
+                await message.bot.delete_message(message.chat.id, edit_request_message_id)
+        except Exception:
+            pass
+
+        try:
+            if original_message_id:
+                safe_payer = hd.quote(payer)
+                safe_username = hd.quote(username)
+                safe_contractor = hd.quote(contractor_name)
+
+                builder = InlineKeyboardBuilder()
+                builder.button(text="Редактировать", callback_data=f"edit_check:{operation_id}")
+                builder.button(text="Другая дата", callback_data=f"edit_date:{operation_id}")
+                builder.button(text="Скрыть", callback_data="delete_message")
+
+
+                new_text = (
+                    f"📋 <b>Операция #{operation_id}</b>\n\n"
+                    f"Зачислено: <b>{f_amount} {operation['currency']}</b>\n"
+                    f"Дата: {new_timestamp.strftime('%d.%m.%Y %H:%M')}\n"
+                    f"Внес: @{safe_username}\n"
+                    f"КА: {safe_contractor}\n\n"
+                    f"<i>📅 Дата изменена: было {old_date_str}, стало {new_date_str}</i>"
+                ).replace(".", ",")
+
+
+                try:
+                    await message.bot.edit_message_caption(
+                        chat_id=message.chat.id,
+                        message_id=original_message_id,
+                        caption=new_text,
+                        parse_mode="HTML",
+                        reply_markup=builder.as_markup(),
+                    )
+                except Exception:
+                    await message.bot.edit_message_text(
+                        chat_id=message.chat.id,
+                        message_id=original_message_id,
+                        text=new_text,
+                        parse_mode="HTML",
+                        reply_markup=builder.as_markup(),
+                    )
+        except Exception as e:
+            print(f"Не удалось отредактировать исходное сообщение: {e}")
+
+        await state.clear()
+
+    except ValueError as e:
+        await temp_msg(message, f"❌ Ошибка в дате: {e}\n\nПроверьте корректность введенной даты.")
+    except Exception as e:
+        await temp_msg(message, f"❌ Ошибка при обновлении: {e}")
+        await state.clear()
+
+
+@router.callback_query(F.data == "cancel_edit_date")
+async def cancel_edit_date(callback: CallbackQuery, state: FSMContext):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    await state.clear()
+    await callback.answer("❌ Изменение даты отменено")

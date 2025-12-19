@@ -10,12 +10,14 @@ def parse_date_period(
         return None, None, None  # без периода
 
     if len(args) == 1:
-        return None, None, "❌ Укажи ДВЕ даты в формате: /export 11.11.2025 14.11.2025"
+        start_date = datetime.strptime(args[0], "%d.%m.%Y")
+        end_date = start_date.replace(hour=23, minute=59, second=59)
+        print(start_date, end_date)
+        return start_date, end_date, None
 
     try:
         start_date = datetime.strptime(args[0], "%d.%m.%Y")
         end_date = datetime.strptime(args[1], "%d.%m.%Y")
-        # конец дня
         end_date = end_date.replace(hour=23, minute=59, second=59)
         if start_date > end_date:
             return None, None, "❌ Дата начала не может быть позже даты окончания"

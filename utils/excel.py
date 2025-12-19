@@ -187,7 +187,6 @@ async def export_to_excel(
                 stripe_color="E2EFDA",
             )
 
-        # 2-й лист: операции
         if not df_operations.empty:
             df_operations.to_excel(writer, sheet_name="Операции", index=False)
             worksheet = writer.sheets["Операции"]
@@ -196,53 +195,39 @@ async def export_to_excel(
             )
             worksheet.auto_filter.ref = worksheet.dimensions
 
-            total_checks = len(
-                df_operations[df_operations["Тип операции"] == "пополнение_руб_чек"]
+            changed_date_fill = PatternFill(
+                start_color="FFCCCB",
+                end_color="FFCCCB",
+                fill_type="solid"
             )
 
-            last_col = len(df_operations.columns)
-            col_letter_label = get_column_letter(
-                last_col + 2
-            )
-            col_letter_value = get_column_letter(last_col + 3)
+            description_col_idx = None
+            if "Описание" in df_operations.columns:
+                description_col_idx = df_operations.columns.get_loc("Описание") + 1
 
-            worksheet[f"{col_letter_label}1"] = "ЧЕКИ:"
-            worksheet[f"{col_letter_value}1"] = total_checks
+                for row_num in range(2, len(df_operations) + 2):
+                    description_cell = worksheet.cell(row=row_num, column=description_col_idx)
+                    description_value = str(description_cell.value or "")
 
-            worksheet[f"{col_letter_label}1"].font = Font(
-                bold=True, size=12, color="FFFFFF"
-            )
-            worksheet[f"{col_letter_label}1"].fill = PatternFill(
-                start_color="FF6B35", end_color="FF6B35", fill_type="solid"
-            )
-            worksheet[f"{col_letter_label}1"].alignment = Alignment(
-                horizontal="right", vertical="center"
-            )
-            worksheet[f"{col_letter_label}1"].border = Border(
-                left=Side(style="thick"),
-                right=Side(style="thick"),
-                top=Side(style="thick"),
-                bottom=Side(style="thick"),
-            )
+                    if "Дата изменена:" in description_value:
+                        for col_num in range(1, len(df_operations.columns) + 1):
+                            cell = worksheet.cell(row=row_num, column=col_num)
+                            cell.fill = changed_date_fill
 
-            worksheet[f"{col_letter_value}1"].font = Font(
-                bold=True, size=14, color="FFFFFF"
-            )
-            worksheet[f"{col_letter_value}1"].fill = PatternFill(
-                start_color="FF6B35", end_color="FF6B35", fill_type="solid"
-            )
-            worksheet[f"{col_letter_value}1"].alignment = Alignment(
-                horizontal="center", vertical="center"
-            )
-            worksheet[f"{col_letter_value}1"].border = Border(
-                left=Side(style="thick"),
-                right=Side(style="thick"),
-                top=Side(style="thick"),
-                bottom=Side(style="thick"),
-            )
+            if description_col_idx:
+                description_col_letter = get_column_letter(description_col_idx)
 
-            worksheet.column_dimensions[col_letter_label].width = 10
-            worksheet.column_dimensions[col_letter_value].width = 8
+                header_cell = worksheet.cell(row=1, column=description_col_idx)
+                max_length = len(str(header_cell.value))
+
+                for row_num in range(2, len(df_operations) + 2):
+                    cell = worksheet.cell(row=row_num, column=description_col_idx)
+                    cell_length = len(str(cell.value or ""))
+                    if cell_length > max_length:
+                        max_length = cell_length
+
+                adjusted_width = min(max_length + 2, 100)
+                worksheet.column_dimensions[description_col_letter].width = adjusted_width
 
         # 3-й лист: Отчет
         if not df_operations.empty and "Сумма" in df_operations.columns:

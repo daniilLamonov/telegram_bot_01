@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 async def main():
     await init_db()
-    print(settings.DATABASE_URL)
 
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value())
     storage = MemoryStorage()

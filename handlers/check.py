@@ -1015,12 +1015,6 @@ async def process_edit_date(message: Message, state: FSMContext):
         else:
             f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
 
-        payer_match = re.search(r"Плательщик: (.+?)\.", description)
-        payer = payer_match.group(1) if payer_match else "Не указано"
-
-        type_match = re.search(r"Тип: (.+?)\.", description)
-        file_type = type_match.group(1) if type_match else "фото"
-
         try:
             if edit_request_message_id:
                 await message.bot.delete_message(message.chat.id, edit_request_message_id)
@@ -1029,7 +1023,6 @@ async def process_edit_date(message: Message, state: FSMContext):
 
         try:
             if original_message_id:
-                safe_payer = hd.quote(payer)
                 safe_username = hd.quote(username)
                 safe_contractor = hd.quote(contractor_name)
 

@@ -5,6 +5,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from config import settings
 from database.repositories import ChatRepo, OperationRepo
 from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
@@ -95,6 +96,9 @@ async def cmd_ch(message: Message):
 
 @router.message(Command("chall"), IsAdminFilter())
 async def cmd_chall(message: Message):
+    if message.from_user.id not in settings.SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
+        return
     await delete_message(message)
     match = re.search(r"/chall\s+(\d+(?:[.,]\d+)?)", message.text)
     if not match:

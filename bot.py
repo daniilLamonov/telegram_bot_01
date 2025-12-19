@@ -10,6 +10,7 @@ from handlers import router
 from middlewares.register_user import RegisterUserMiddleware
 
 
+
 async def set_bot_commands(bot: Bot):
     user_commands = [
         BotCommand(command="check", description="📸 Пополнить баланс по чеку"),

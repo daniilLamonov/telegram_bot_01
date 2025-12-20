@@ -86,8 +86,17 @@ class ChatRepo(BaseRepository):
             return True
         except Exception:
             return False
-
-
+    @classmethod
+    async def get_all_active_chats(cls) -> list:
+        rows = await cls._fetch(
+            """
+                SELECT chat_id, contractor_name, is_active
+                FROM chats
+                WHERE is_active = TRUE
+                ORDER BY contractor_name \
+            """
+        )
+        return [dict(row) for row in rows]
 
 # class ChatRepo(BaseRepository):
 #

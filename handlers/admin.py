@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
 from database.repositories import ChatRepo, UserRepo
+from database.repositories.balance_repo import BalanceRepo
 from filters.admin import IsAdminFilter
 from states import NewsletterStates
 
@@ -21,24 +22,26 @@ router = Router(name="admin")
 async def cmd_new(message: Message):
     await delete_message(message)
     args = message.text.split()[1:]
+
     if not args:
         await temp_msg(message, "Использование: /new <процент>")
         return
+
     try:
         percent = float(args[0].replace(",", "."))
         chat_id = message.chat.id
 
-        is_set = await ChatRepo.set_commission(chat_id, percent)
+        balance_id = await ChatRepo.get_balance_id(chat_id)
+        if not balance_id:
+            await temp_msg(message, "❌ Чат не инициализирован")
+            return
 
-        if not is_set:
-            await temp_msg("Чат не инициализирован")
+        await BalanceRepo.set_commission(balance_id, percent)
 
-        await temp_msg(
-            message,
-            f"✅ Комиссия при обмене установлена: {percent:.2f}%\n".replace(".", ","),
-        )
+        await temp_msg(message, f"✅ Комиссия баланса: {percent:.2f}%")
+
     except (ValueError, IndexError):
-        await temp_msg(message, "Ошибка: введите корректный процент")
+        await temp_msg(message, "❌ Введите корректный процент")
 
 
 @router.message(Command("init"), IsAdminFilter())
@@ -57,8 +60,8 @@ async def cmd_init(message: Message):
             parse_mode="HTML",
         )
         return
-    match = re.search(r"^/init(?:@\w+)?\s+(.+)", message.text)
 
+    match = re.search(r"^/init(?:@\w+)?\s+(.+)", message.text)
     if not match:
         await temp_msg(
             message,
@@ -66,33 +69,30 @@ async def cmd_init(message: Message):
             parse_mode="HTML",
         )
         return
+
     contractor_name = match.group(1).strip()
 
-    if not contractor_name:
-        await temp_msg(
-            message,
-            """
-        ❌ Требуется ввести команду с названием КА\n.
-         Пример <code>/init ABC13 </code>
-        """,
-        )
-        return
+    balance = await BalanceRepo.get_by_name(contractor_name)
+    if not balance:
+        balance = await BalanceRepo.create(contractor_name)
 
     success = await ChatRepo.initialize_chat(
         chat_id=message.chat.id,
-        chat_title=message.chat.title,
+        chat_title=message.chat.title or "",
         chat_type=message.chat.type,
         contractor_name=contractor_name,
         initialized_by=message.from_user.id,
+        balance_id=balance['id'],
     )
 
     if success:
         await temp_msg(
             message,
-            f"✅ <b>Чат успешно инициализирован!</b>\n\n"
+            f"✅ <b>Чат инициализирован!</b>\n\n"
             f"📝 Контрагент: <b>{contractor_name}</b>\n"
-            f"🆔 Chat ID: <code>{message.chat.id}</code>\n\n"
-            f"Теперь пользователи могут работать с ботом в этом чате.",
+            f"🆔 Баланс ID: <code>{balance['id']}</code>\n"
+            f"💵 RUB: <code>{balance['balance_rub']:.2f}</code>\n"
+            f"💰 USDT: <code>{balance['balance_usdt']:.8f}</code>",
             parse_mode="HTML",
         )
     else:
@@ -122,23 +122,30 @@ async def cmd_reinit(message: Message):
             parse_mode="HTML",
         )
         return
+
     contractor_name = match.group(1).strip()
+
+    balance = await BalanceRepo.get_by_name(contractor_name)
+    if not balance:
+        balance = await BalanceRepo.create(contractor_name)
 
     success = await ChatRepo.initialize_chat(
         chat_id=message.chat.id,
-        chat_title=message.chat.title,
+        chat_title=message.chat.title or "",
         chat_type=message.chat.type,
         contractor_name=contractor_name,
         initialized_by=message.from_user.id,
+        balance_id=balance['id'],
     )
 
     if success:
         await temp_msg(
             message,
-            f"✅ <b>Чат успешно инициализирован!</b>\n\n"
+            f"✅ <b>Чат инициализирован!</b>\n\n"
             f"📝 Контрагент: <b>{contractor_name}</b>\n"
-            f"🆔 Chat ID: <code>{message.chat.id}</code>\n\n"
-            f"Теперь пользователи могут работать с ботом в этом чате.",
+            f"🆔 Баланс ID: <code>{balance['id']}</code>\n"
+            f"💵 RUB: <code>{balance['balance_rub']:.2f}</code>\n"
+            f"💰 USDT: <code>{balance['balance_usdt']:.8f}</code>",
             parse_mode="HTML",
         )
     else:

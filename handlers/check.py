@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
 from config import settings
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo, UserRepo
 from filters.admin import IsAdminFilter
 from states import CheckStates
 from utils.helpers import delete_message, temp_msg
@@ -322,11 +322,14 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
             await process_next_in_queue(message.bot, chat_id, state)
             return
 
-        await ChatRepo.add_to_balance(chat_id, amount)
-        contractor_name = await ChatRepo.get_contractor_name(chat_id)
+        balance  = await BalanceRepo.get_by_chat(chat_id)
+
+        balance_id = balance["id"]
+
+        await BalanceRepo.add(balance_id, amount)
 
         op_id = await OperationRepo.log_operation(
-            chat_id,
+            balance_id,
             user_id,
             username,
             "пополнение_руб_чек",
@@ -337,7 +340,7 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
 
         safe_payer = hd.quote(payer_info)
         safe_username = hd.quote(username)
-        safe_contractor = hd.quote(contractor_name)
+        safe_contractor = hd.quote(balance["name"])
 
         results_queue = data.get("results_queue", [])
         results_queue.append(
@@ -489,11 +492,14 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         await temp_msg(message, f"❌ Ошибка при сохранении файла: {e}")
         return
 
-    await ChatRepo.add_to_balance(chat_id, amount)
-    contractor_name = await ChatRepo.get_contractor_name(chat_id)
+    balance = await BalanceRepo.get_by_chat(chat_id)
+
+    balance_id = balance["id"]
+
+    await BalanceRepo.add(balance_id, amount)
 
     op_id = await OperationRepo.log_operation(
-        chat_id,
+        balance_id,
         user_id,
         username,
         "пополнение_руб_чек",
@@ -506,7 +512,7 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
 
     safe_payer = hd.quote(payer_info)
     safe_username = hd.quote(username)
-    safe_contractor = hd.quote(contractor_name)
+    safe_contractor = hd.quote(balance["name"])
     if amount == int(amount):
         f_amount = f'{int(amount):,}'.replace(',', ' ')
     else:
@@ -553,7 +559,9 @@ async def cmd_history_check(message: Message):
 
     filename = filename_match.group(1)
     filepath = os.path.join(FILES_DIR, filename)
-    contractor_name = await ChatRepo.get_contractor_name(operation["chat_id"])
+    balance = await BalanceRepo.get_bal_info_by_id(operation["balance_id"])
+
+    contractor_name = balance["name"]
 
     safe_username = hd.quote(operation["username"])
     safe_contractor = hd.quote(contractor_name)
@@ -640,7 +648,6 @@ async def cmd_delete(message: Message):
         f'Тип: {operation["operation_type"]}\n'
         f'Сумма: {operation["amount"]:.2f} {operation["currency"]}\n'
         f'Время: {operation["timestamp"]}\n'
-        f'Описание: {operation["description"]}\n\n'
         f"<b>Баланс чата будет автоматически скорректирован</b>",
         reply_markup=builder.as_markup(),
         parse_mode="HTML",
@@ -661,27 +668,28 @@ async def process_delete_confirmation(callback: CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-    operation_chat_id = operation["chat_id"]
+    chat_id = operation["chat_id"]
     amount = operation["amount"]
 
-    balance_rub, balance_usdt = await ChatRepo.get_balance(operation_chat_id)
+    balance_id = await ChatRepo.get_balance_id(chat_id)
 
-    balance_rub = balance_rub - int(amount)
+    # balance_rub, balance_usdt = await ChatRepo.get_balance(operation_chat_id)
+
+    # balance_rub = balance_rub - int(amount)
 
     result = await OperationRepo.delete_operation(operation_id)
 
-    await ChatRepo.update_balance(operation_chat_id, balance_rub, balance_usdt)
+    # await ChatRepo.update_balance(operation_chat_id, balance_rub, balance_usdt)
+
+    await BalanceRepo.add(balance_id, -amount)
 
     if result["success"]:
         await callback.message.edit_text(
             (
                 f"✅ Операция удалена успешно!\n\n"
                 f"ID: {operation_id}\n"
-                f"Чат ID: {operation_chat_id}\n"
+                f"Чат ID: {chat_id}\n"
                 f"Сумма: {amount:.2f}\n\n"
-                f"Новый баланс чата:\n"
-                f"₽: {balance_rub:.2f}\n"
-                f"USDT: {balance_usdt:.2f}"
             ).replace(".", ","),
             parse_mode="HTML",
             reply_markup=get_delete_keyboard(),
@@ -723,7 +731,7 @@ async def start_edit_check(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CheckStates.editing_check)
     await state.update_data(
         editing_operation_id=operation_id,
-        editing_chat_id=operation["chat_id"],
+        editing_balance_id=operation["balance_id"],
         old_amount=float(operation["amount"]),
         old_payer=current_payer,
         original_message_id=callback.message.message_id,
@@ -786,11 +794,10 @@ async def process_edit_check(message: Message, state: FSMContext):
 
         data = await state.get_data()
         operation_id = data["editing_operation_id"]
-        chat_id = data["editing_chat_id"]
+        balance_id = data["editing_balance_id"]
         old_amount = float(data["old_amount"])
         old_payer = data["old_payer"]
         original_message_id = data.get("original_message_id")
-        original_message_text = data.get("original_message_text")
         edit_request_message_id = data.get("edit_request_message_id")
 
         if not new_payer:
@@ -813,7 +820,8 @@ async def process_edit_check(message: Message, state: FSMContext):
         )
 
         balance_diff = new_amount - old_amount
-        await ChatRepo.add_to_balance(chat_id, balance_diff)
+
+        await BalanceRepo.add(balance_id, balance_diff)
 
         await OperationRepo.update_operation(
             operation_id,
@@ -821,7 +829,7 @@ async def process_edit_check(message: Message, state: FSMContext):
             description=new_description
         )
 
-        contractor_name = await ChatRepo.get_contractor_name(chat_id)
+        contractor_name = await BalanceRepo.get_contractor_name(balance_id)
         username = operation["username"]
 
         if new_amount == int(new_amount):
@@ -916,7 +924,7 @@ async def start_edit_date(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CheckStates.editing_date)
     await state.update_data(
         editing_operation_id=operation_id,
-        editing_chat_id=operation["chat_id"],
+        editing_balance_id=operation["balance_id"],
         old_timestamp=current_date,
         original_message_id=callback.message.message_id,
         original_message_text=callback.message.caption or callback.message.text,
@@ -980,7 +988,7 @@ async def process_edit_date(message: Message, state: FSMContext):
 
         data = await state.get_data()
         operation_id = data["editing_operation_id"]
-        chat_id = data["editing_chat_id"]
+        balance_id = data["editing_balance_id"]
         old_timestamp = data["old_timestamp"]
         original_message_id = data.get("original_message_id")
         edit_request_message_id = data.get("edit_request_message_id")
@@ -1006,7 +1014,7 @@ async def process_edit_date(message: Message, state: FSMContext):
             description=description
         )
 
-        contractor_name = await ChatRepo.get_contractor_name(chat_id)
+        contractor_name = await BalanceRepo.get_contractor_name(balance_id)
         username = operation["username"]
         amount = operation["amount"]
 

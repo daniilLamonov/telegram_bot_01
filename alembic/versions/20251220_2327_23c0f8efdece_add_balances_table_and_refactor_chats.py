@@ -1,42 +1,41 @@
-"""add balances table and refactor chats
+"""add balances table, link chats and operations to balances
 
 Revision ID: 23c0f8efdece
 Revises: 9ac0f9a28488
 Create Date: 2025-12-20 23:27:57.337644
-
 """
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
-revision: str = '23c0f8efdece'
-down_revision: Union[str, Sequence[str], None] = '9ac0f9a28488'
+revision: str = "23c0f8efdece"
+down_revision: Union[str, Sequence[str], None] = "9ac0f9a28488"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     """
-    1. Включаем расширение для uuid (если нужно)
+    1. Включаем расширение uuid-ossp
     2. Создаём таблицу balances с UUID PK
-    3. Заполняем balances из текущих chats (по contractor_name)
-    4. Добавляем chats.balance_id (UUID), связываем с balances
-    5. Удаляем балансные поля из chats
+    3. Наполняем balances из chats (по contractor_name)
+    4. Добавляем chats.balance_id (UUID) и связываем с balances
+    5. Удаляем balance_rub/balance_usdt/commission_percent из chats
+    6. Добавляем operations.balance_id (UUID) и заполняем через chats
+    7. Удаляем chat_id из operations
     """
-    # 1. Расширение для uuid (на всякий случай, в Postgres 13+ может уже быть)
-    op.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+    # 1. Расширение для uuid
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
-    # 2. Таблица balances с UUID PK
+    # 2. Таблица balances
     op.execute(
         """
         CREATE TABLE balances (
             id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             name                TEXT NOT NULL UNIQUE,
             balance_rub         NUMERIC(15, 2) DEFAULT 0 NOT NULL,
-            balance_usdt        NUMERIC(15, 8) DEFAULT 0 NOT NULL,
+            balance_usdt        NUMERIC(15, 2) DEFAULT 0 NOT NULL,
             commission_percent  NUMERIC(5, 2)  DEFAULT 0,
             is_active           BOOLEAN        DEFAULT TRUE,
             created_at          TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
@@ -60,24 +59,24 @@ def upgrade() -> None:
         """
     )
 
-    # 3. Заполняем balances из уникальных contractor_name
-    # Один NAME → один баланс
+    # 3. Наполняем balances из chats: один contractor_name → один баланс
     op.execute(
         """
         INSERT INTO balances (name, balance_rub, balance_usdt, commission_percent, created_at)
         SELECT
             contractor_name,
-            SUM(balance_rub) AS total_rub,
-            SUM(balance_usdt) AS total_usdt,
-            MAX(commission_percent) AS commission,
-            MIN(created_at) AS first_created
+            SUM(balance_rub)         AS total_rub,
+            SUM(balance_usdt)        AS total_usdt,
+            MAX(commission_percent)  AS commission,
+            MIN(created_at)          AS first_created
         FROM chats
-        WHERE contractor_name IS NOT NULL AND contractor_name <> ''
+        WHERE contractor_name IS NOT NULL
+          AND contractor_name <> ''
         GROUP BY contractor_name
         """
     )
 
-    # Дополнительно создаём дефолтный баланс для чатов без contractor_name
+    # дефолтный баланс для чатов без contractor_name (фолбек)
     op.execute(
         """
         INSERT INTO balances (name)
@@ -94,7 +93,7 @@ def upgrade() -> None:
         """
     )
 
-    # Привязываем чаты с contractor_name к соответствующим балансам
+    # Привязка по contractor_name
     op.execute(
         """
         UPDATE chats AS c
@@ -104,7 +103,7 @@ def upgrade() -> None:
         """
     )
 
-    # Чаты без contractor_name → на дефолтный баланс
+    # Чаты без имени контрагента отправляем на дефолтный баланс
     op.execute(
         """
         UPDATE chats
@@ -113,7 +112,7 @@ def upgrade() -> None:
         """
     )
 
-    # Делаем not null и добавляем внешний ключ
+    # NOT NULL + FK + индекс
     op.execute(
         """
         ALTER TABLE chats
@@ -138,7 +137,7 @@ def upgrade() -> None:
         """
     )
 
-    # 5. Удаляем балансные поля из chats (теперь они живут в balances)
+    # 5. Удаляем балансные поля из chats (они теперь в balances)
     op.execute(
         """
         ALTER TABLE chats
@@ -160,18 +159,106 @@ def upgrade() -> None:
         """
     )
 
-    # contractor_name оставляем как "alias" имени баланса для удобства
+    # contractor_name оставляем для удобства отображения
+
+    # 6. Добавляем balance_id в operations и заполняем через chats
+    op.execute(
+        """
+        ALTER TABLE operations
+        ADD COLUMN balance_id UUID
+        """
+    )
+
+    op.execute(
+        """
+        UPDATE operations AS o
+        SET balance_id = c.balance_id
+        FROM chats AS c
+        WHERE o.chat_id = c.chat_id
+        """
+    )
+
+    op.execute(
+        """
+        UPDATE operations
+        SET balance_id = (SELECT id FROM balances WHERE name = '__default__')
+        WHERE balance_id IS NULL
+        """
+    )
+
+    op.execute(
+        """
+        ALTER TABLE operations
+        ALTER COLUMN balance_id SET NOT NULL
+        """
+    )
+
+    op.execute(
+        """
+        ALTER TABLE operations
+        ADD CONSTRAINT fk_operations_balance_id
+            FOREIGN KEY (balance_id)
+            REFERENCES balances (id)
+            ON DELETE RESTRICT
+        """
+    )
+
+    op.execute(
+        """
+        CREATE INDEX idx_operations_balance_id
+            ON operations (balance_id)
+        """
+    )
+
+    # 7. Удаляем chat_id из operations
+    op.execute(
+        """
+        ALTER TABLE operations
+        DROP COLUMN IF EXISTS chat_id
+        """
+    )
 
 
 def downgrade() -> None:
     """
     Откат:
-    1. Вернуть балансные поля в chats
-    2. Перенести значения из balances обратно в chats
-    3. Удалить FK и balance_id
-    4. Удалить balances
+    1. Вернуть chat_id в operations (пустой, без восстановления данных)
+    2. Удалить FK и колонку balance_id из operations
+    3. Вернуть балансные поля в chats
+    4. Перенести значения из balances обратно в chats
+    5. Удалить FK и balance_id из chats
+    6. Удалить balances
     """
-    # 1. Возвращаем колонки в chats
+    # 1. operations: возвращаем chat_id, чтобы схема совпала с прошлой
+    op.execute(
+        """
+        ALTER TABLE operations
+        ADD COLUMN chat_id BIGINT
+        """
+    )
+
+    # 2. operations: снимаем FK + индекс и удаляем balance_id
+    op.execute(
+        """
+        ALTER TABLE operations
+        DROP CONSTRAINT IF EXISTS fk_operations_balance_id
+        """
+    )
+
+    op.execute(
+        """
+        DROP INDEX IF EXISTS idx_operations_balance_id
+        """
+    )
+
+    op.execute(
+        """
+        ALTER TABLE operations
+        DROP COLUMN IF EXISTS balance_id
+        """
+    )
+
+    # 3. chats: возвращаем балансные поля
     op.execute(
         """
         ALTER TABLE chats
@@ -193,7 +280,7 @@ def downgrade() -> None:
         """
     )
 
-    # 2. Переносим данные обратно
+    # 4. Переносим значения из balances обратно в chats
     op.execute(
         """
         UPDATE chats AS c
@@ -206,7 +293,7 @@ def downgrade() -> None:
         """
     )
 
-    # 3. Удаляем FK и колонку balance_id
+    # 5. Удаляем FK/индекс и колонку balance_id из chats
     op.execute(
         """
         ALTER TABLE chats
@@ -227,10 +314,9 @@ def downgrade() -> None:
         """
     )
 
-    # 4. Удаляем таблицу balances (и расширение оставить, оно не мешает)
+    # 6. Удаляем balances
     op.execute(
         """
         DROP TABLE IF EXISTS balances CASCADE
         """
     )
-

@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, Message
 
 from config import settings
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from utils.excel import export_to_excel, export_comparison_report
 from utils.dateparse import parse_date_period
@@ -40,14 +40,16 @@ async def cmd_export(message: Message):
         buffer = await export_to_excel(
             chat_id=chat_id, start_date=start_date, end_date=end_date
         )
-        contractor = await ChatRepo.get_contractor_name(chat_id)
+        balance_id = await ChatRepo.get_balance_id(chat_id)
+
+        contractor = await BalanceRepo.get_contractor_name(balance_id)
 
         filename = (
             f"report_{contractor}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         )
         document = BufferedInputFile(buffer.read(), filename=filename)
 
-        caption = f"📊 Отчет для чата: {contractor}\n📅 Период: {period_str}"
+        caption = f"📊 Отчет для КА: {contractor}\n📅 Период: {period_str}"
         try:
             await status_msg.delete()
         except Exception:

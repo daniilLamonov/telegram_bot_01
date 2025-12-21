@@ -6,7 +6,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import settings
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -50,7 +50,11 @@ async def cmd_ch(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
+        balance = await BalanceRepo.get_by_chat(chat_id)
+
+        balance_id = balance["id"]
+
+        balance_rub, balance_usdt = balance["balance_rub"], balance["balance_usdt"]
 
         if balance_rub < amount_rub:
             await temp_msg(
@@ -59,18 +63,15 @@ async def cmd_ch(message: Message):
             )
             return
         amount_usdt = amount_rub / rate
-        commission = await ChatRepo.get_commission(chat_id)
+        commission = float(balance["commission_percent"])
         amount_after_commission, commission_amount = await calculate_commission(
-            chat_id, amount_usdt, user_id, username, commission
+            balance_id, amount_usdt, user_id, username, commission
         )
 
-        new_balance_rub = balance_rub - amount_rub
-        new_balance_usdt = balance_usdt + amount_after_commission
-
-        await ChatRepo.update_balance(chat_id, new_balance_rub, new_balance_usdt)
+        await BalanceRepo.add(balance_id, -amount_rub, amount_after_commission)
 
         await OperationRepo.log_operation(
-            chat_id,
+            balance_id,
             user_id,
             username,
             "обмен_руб_на_usdt",
@@ -118,7 +119,7 @@ async def cmd_chall(message: Message):
             return
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
-        chats = await ChatRepo.get_all_chats()
+        balances = await BalanceRepo.get_all()
         start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
@@ -135,12 +136,11 @@ async def cmd_chall(message: Message):
         total_commission = 0
         successful_chats = 0
 
-        for chat in chats:
-            chat_id = chat["chat_id"]
-            contractor_name = await ChatRepo.get_contractor_name(chat_id)
-            balance_rub = float(chat["balance_rub"])
-            balance_usdt = float(chat["balance_usdt"])
-            operations = await OperationRepo.get_checks_by_date(chat_id, start_date, end_date)
+        for balance in balances:
+            balance_id = balance["id"]
+            contractor_name = balance["name"]
+            balance_rub = float(balance["balance_rub"])
+            operations = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
             amount_rub = float(sum(op["amount"] for op in operations))
             if amount_rub <= 0:
                 report_lines.append(f"\n⚪️ Чат <code>{contractor_name}</code>: нет чеков за вчера")
@@ -153,15 +153,14 @@ async def cmd_chall(message: Message):
                 )
                 continue
             amount_usdt = amount_rub / rate
-            commission = await ChatRepo.get_commission(chat_id)
+            commission = float(balance["commission_percent"])
             amount_after_commission, commission_amount = await calculate_commission(
-                chat_id, amount_usdt, user_id, username, commission
+                balance_id, amount_usdt, user_id, username, commission
             )
-            new_balance_rub = balance_rub - amount_rub
-            new_balance_usdt = balance_usdt + amount_after_commission
-            await ChatRepo.update_balance(chat_id, new_balance_rub, new_balance_usdt)
+
+            await BalanceRepo.add(balance_id, -amount_rub, amount_after_commission)
             await OperationRepo.log_operation(
-                chat_id,
+                balance_id,
                 user_id,
                 username,
                 "обмен_руб_на_usdt",
@@ -197,12 +196,12 @@ async def cmd_chall(message: Message):
         await temp_msg(message, "Ошибка: введите корректные значения")
 
 
-async def calculate_commission(chat_id, amount_usdt, user_id, username, commission):
+async def calculate_commission(balance_id, amount_usdt, user_id, username, commission):
     commission_amount = amount_usdt * (commission / 100)
     amount_after_commission = amount_usdt - commission_amount
 
     await OperationRepo.log_operation(
-        chat_id,
+        balance_id,
         user_id,
         username,
         "комиссия",

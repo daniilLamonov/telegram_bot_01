@@ -29,12 +29,10 @@ async def cmd_get(message: Message):
 
         balance_id = await ChatRepo.get_balance_id(chat_id)
 
-        balance_rub, balance_usdt = await BalanceRepo.get_by_id(balance_id)
-        new_balance_rub = balance_rub + amount
-        await BalanceRepo.update(balance_id, new_balance_rub, balance_usdt)
+        await BalanceRepo.add(balance_id, amount)
 
         await OperationRepo.log_operation(
-            chat_id,
+            balance_id,
             user_id,
             username,
             "пополнение_руб",
@@ -68,12 +66,12 @@ async def cmd_gets(message: Message):
 
         balance_id = await ChatRepo.get_balance_id(chat_id)
 
-        balance_rub, balance_usdt = await BalanceRepo.get_by_id(balance_id)
-        new_balance_usdt = balance_usdt + amount
-        await BalanceRepo.update(balance_id, balance_rub, new_balance_usdt)
+        # balance_rub, balance_usdt = await BalanceRepo.get_by_id(balance_id)
+        # new_balance_usdt = balance_usdt + amount
+        await BalanceRepo.add(balance_id, 0.0, amount)
 
         await OperationRepo.log_operation(
-            chat_id,
+            balance_id,
             user_id,
             username,
             "пополнение_usdt",

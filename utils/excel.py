@@ -3,7 +3,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from io import BytesIO
 from typing import List
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 
 
 async def export_to_excel(
@@ -17,38 +17,39 @@ async def export_to_excel(
     from openpyxl.utils import get_column_letter
 
     if chat_id:
-        chat_info = await ChatRepo.get_chat(chat_id)
+        balance = await BalanceRepo.get_by_chat(chat_id)
+        balance_id = balance["id"]
         if start_date and end_date:
             operations = await OperationRepo.get_operations_with_period(
-                chat_id, start_date, end_date
+                balance_id, start_date, end_date
             )
-            chat_commissions = await OperationRepo.get_commissions_operations(chat_id, start_date, end_date)
+            balance_commissions = await OperationRepo.get_commissions_operations(balance_id, start_date, end_date)
         else:
-            operations = await OperationRepo.get_operations(chat_id)
-            chat_commissions = await OperationRepo.get_commissions_operations(chat_id)
+            operations = await OperationRepo.get_operations(balance_id)
+            balance_commissions = await OperationRepo.get_commissions_operations(balance_id)
 
 
         balance_data = {
             "Контрагент": [
-                chat_info["contractor_name"] if chat_info else "Не установлено"
+                balance["name"] if balance else "Не установлено"
             ],
             "Комиссия %": [
                 (
-                    float(chat_info["commission_percent"])
-                    if chat_info and chat_info["commission_percent"]
+                    float(balance["commission_percent"])
+                    if balance and balance["commission_percent"]
                     else 0
                 )
             ],
-            "Баланс RUB": [float(chat_info["balance_rub"]) if chat_info else 0],
-            "Баланс USDT": [float(chat_info["balance_usdt"]) if chat_info else 0],
-            "Комиссионные USDT": [chat_commissions if chat_info else 0],
-            "Создан": [chat_info["created_at"] if chat_info else None],
-            "Обновлен": [chat_info["updated_at"] if chat_info else None],
+            "Баланс RUB": [float(balance["balance_rub"]) if balance else 0],
+            "Баланс USDT": [float(balance["balance_usdt"]) if balance else 0],
+            "Комиссионные USDT": [balance_commissions if balance else 0],
+            "Создан": [balance["created_at"] if balance else None],
+            "Обновлен": [balance["updated_at"] if balance else None],
         }
         df_balance = pd.DataFrame(balance_data)
 
     else:
-        all_chats = await ChatRepo.get_all_chats()
+        all_balances = await BalanceRepo.get_all()
 
         if start_date and end_date:
             operations = await OperationRepo.get_operations_with_period(
@@ -58,26 +59,25 @@ async def export_to_excel(
             operations = await OperationRepo.get_operations()
 
         balance_data = []
-        for chat in all_chats:
-            chat_commissions = await OperationRepo.get_commissions_operations(chat["chat_id"], start_date, end_date)
+        for balance in all_balances:
+            balance_commissions = await OperationRepo.get_commissions_operations(balance["id"], start_date, end_date)
             balance_data.append(
                 {
-                    "Chat ID": chat["chat_id"],
-                    "Контрагент": chat["contractor_name"] or "Не установлено",
+                    "Контрагент": balance["name"] or "Не установлено",
                     "Комиссия %": (
-                        float(chat["commission_percent"])
-                        if chat["commission_percent"]
+                        float(balance["commission_percent"])
+                        if balance["commission_percent"]
                         else 0
                     ),
                     "Баланс RUB": (
-                        float(chat["balance_rub"]) if chat["balance_rub"] else 0
+                        float(balance["balance_rub"]) if balance["balance_rub"] else 0
                     ),
                     "Баланс USDT": (
-                        float(chat["balance_usdt"]) if chat["balance_usdt"] else 0
+                        float(balance["balance_usdt"]) if balance["balance_usdt"] else 0
                     ),
-                    "Комиссионные USDT": chat_commissions if chat_commissions else 0,
-                    "Создан": chat["created_at"],
-                    "Обновлен": chat["updated_at"],
+                    "Комиссионные USDT": balance_commissions if balance_commissions else 0,
+                    "Создан": balance["created_at"],
+                    "Обновлен": balance["updated_at"],
                 }
             )
 
@@ -100,7 +100,7 @@ async def export_to_excel(
             "exchange_rate": "Курс",
             "timestamp": "Время",
             "description": "Описание",
-            "contractor_name": "Контрагент",
+            "name": "Контрагент",
         }
         if not chat_id:
             rename_dict["chat_id"] = "Chat ID"
@@ -171,9 +171,9 @@ async def export_to_excel(
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         if chat_id:
-            df_balance.to_excel(writer, sheet_name="Баланс чата", index=False)
+            df_balance.to_excel(writer, sheet_name="Баланс", index=False)
             style_worksheet(
-                writer.sheets["Баланс чата"],
+                writer.sheets["Баланс"],
                 df_balance,
                 header_color="70AD47",
                 stripe_color="E2EFDA",
@@ -438,12 +438,12 @@ async def export_comparison_report(
 
     if only_in_db:
         for op in only_in_db:
-            chat_name = await ChatRepo.get_contractor_name(op['chat_id'])
+            conteractor = await BalanceRepo.get_contractor_name(op['balance_id'])
             ws.append([
                 "БД (нет в файле)",
                 float(op['amount']),
                 op['timestamp'].strftime('%d.%m.%Y %H:%M:%S'),
-                f"{chat_name}",
+                f"{conteractor}",
                 op['username'],
                 f"{op['operation_id']}"
             ])

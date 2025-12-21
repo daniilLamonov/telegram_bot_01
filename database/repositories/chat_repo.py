@@ -86,6 +86,7 @@ class ChatRepo(BaseRepository):
             return True
         except Exception:
             return False
+
     @classmethod
     async def get_all_active_chats(cls) -> list:
         rows = await cls._fetch(
@@ -144,12 +145,7 @@ class ChatRepo(BaseRepository):
 #         except Exception as e:
 #             return False
 #
-#     @classmethod
-#     async def get_contractor_name(cls, chat_id: int) -> str:
-#         result = await cls._fetchval(
-#             "SELECT contractor_name FROM chats WHERE chat_id = $1", chat_id
-#         )
-#         return result if result else "Не установлено"
+
 #
 #     @classmethod
 #     async def save_contractor_name(cls, chat_id: int, contractor_name: str):

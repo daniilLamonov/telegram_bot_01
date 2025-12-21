@@ -5,14 +5,19 @@ from .base import BaseRepository
 
 
 class BalanceRepo(BaseRepository):
-
     @classmethod
-    async def create(cls, name: str,) -> dict:
-        row = await cls._fetchrow("""
+    async def create(
+        cls,
+        name: str,
+    ) -> dict:
+        row = await cls._fetchrow(
+            """
                                   INSERT INTO balances (name)
                                   VALUES ($1)
                                   RETURNING *
-                                  """, name)
+                                  """,
+            name,
+        )
         return dict(row)
 
     @classmethod
@@ -27,25 +32,35 @@ class BalanceRepo(BaseRepository):
         )
         return float(row["balance_rub"]), float(row["balance_usdt"])
 
+    @classmethod
+    async def get_bal_info_by_id(cls, balance_id: uuid.UUID) -> dict[str, Any]:
+        row = await cls._fetchrow(
+            """
+            SELECT *
+            FROM balances
+            WHERE id = $1
+            """,
+            balance_id,
+        )
+        return dict(row) if row else None
 
     @classmethod
     async def get_by_name(cls, name: str) -> Optional[dict]:
-        row = await cls._fetchrow("""
+        row = await cls._fetchrow(
+            """
         SELECT id, name, balance_rub, balance_usdt, commission_percent
         FROM balances
             WHERE name = $1
-        """, name)
+        """,
+            name,
+        )
         return dict(row) if row else None
 
     @classmethod
     async def get_by_chat(cls, chat_id: int) -> Optional[dict]:
         row = await cls._fetchrow(
             """
-            SELECT b.id,
-                   b.name,
-                   b.balance_rub,
-                   b.balance_usdt,
-                   b.commission_percent
+            SELECT b.*
             FROM chats c
                      JOIN balances b ON c.balance_id = b.id
             WHERE c.chat_id = $1
@@ -55,37 +70,47 @@ class BalanceRepo(BaseRepository):
         return dict(row) if row else None
 
     @classmethod
-    async def update(
+    async def get_all(cls) -> list[dict]:
+        results = await cls._fetch(
+            """
+                  SELECT *
+                  FROM balances
+                  ORDER BY name
+                  """
+        )
+        return [dict(row) for row in results]
+
+    @classmethod
+    async def add(
         cls,
         balance_id: uuid.UUID,
         amount_rub: float = 0.0,
         amount_usdt: float = 0.0,
-    ) -> dict:
-        row = await cls._fetchrow(
+    ):
+        await cls._execute(
             """
             UPDATE balances
-            SET balance_rub  = $2,
-                balance_usdt = $3,
+            SET balance_rub  = balance_rub + $2,
+                balance_usdt = balance_usdt + $3,
                 updated_at   = NOW()
             WHERE id = $1
-            RETURNING balance_rub, balance_usdt
             """,
             balance_id,
             amount_rub,
             amount_usdt,
         )
-        return dict(row)
 
     @classmethod
     async def get_commission(cls, balance_id: int) -> float:
-        result = await cls._fetchval("""
+        result = await cls._fetchval(
+            """
             SELECT commission_percent
             FROM balances
             WHERE id = $1
-            """, balance_id
+            """,
+            balance_id,
         )
         return float(result) if result else 0.0
-
 
     @classmethod
     async def set_commission(cls, balance_id: uuid.UUID, percent: float):
@@ -100,3 +125,12 @@ class BalanceRepo(BaseRepository):
             balance_id,
         )
 
+    @classmethod
+    async def get_contractor_name(cls, balance_id: int) -> str:
+        result = await cls._fetchval("""
+                SELECT name
+                FROM balances
+                WHERE id = $1
+                """, balance_id
+        )
+        return result if result else "Не установлено"

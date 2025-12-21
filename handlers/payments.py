@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -79,8 +79,9 @@ async def cmd_pays(message: Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.first_name
 
-        balance_rub, balance_usdt = await ChatRepo.get_balance(chat_id)
+        balance = await BalanceRepo.get_by_chat(chat_id)
 
+        balance_rub, balance_usdt = float(balance["balance_rub"]), float(balance["balance_usdt"])
         if balance_usdt < amount:
             await temp_msg(
                 message,
@@ -92,16 +93,18 @@ async def cmd_pays(message: Message):
             )
             return
 
-        new_balance_usdt = balance_usdt - amount
-        await ChatRepo.update_balance(chat_id, balance_rub, new_balance_usdt)
+        balance_diff = balance_usdt - amount
+        balance_id = balance["id"]
+
+        await BalanceRepo.add(balance_id, 0, -amount)
 
         await OperationRepo.log_operation(
-            chat_id, user_id, username, "выплата_usdt", amount, "USDT"
+            balance_id, user_id, username, "выплата_usdt", amount, "USDT"
         )
 
         await message.answer(
             f"Выплата {amount:.2f} USDT выполнена\n"
-            f"Баланс {new_balance_usdt:.2f} USDT".replace(".", ","),
+            f"Баланс {balance_diff:.2f} USDT".replace(".", ","),
             reply_markup=get_delete_keyboard(),
         )
     except (ValueError, IndexError):

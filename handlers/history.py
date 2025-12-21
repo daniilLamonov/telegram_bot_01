@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
-from database.repositories import ChatRepo, OperationRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import ReconciliationStates
 from utils.helpers import delete_message, temp_msg
@@ -22,13 +22,15 @@ async def cmd_h(message: Message):
     await delete_message(message)
     chat_id = message.chat.id
 
-    history = await OperationRepo.get_history(chat_id)
+    balance_id = await ChatRepo.get_balance_id(chat_id)
+
+    history = await OperationRepo.get_history(balance_id)
 
     if not history:
         await temp_msg(message, "📜 История операций пуста")
         return
 
-    contractor = await ChatRepo.get_contractor_name(chat_id)
+    contractor = await BalanceRepo.get_contractor_name(balance_id)
     msg = f"📜 Последние 10 операций\nКонтрагент: {contractor}\n\n"
 
     for op in history:
@@ -81,6 +83,8 @@ async def sv_today(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     sv_msg_id = data.get("sv_msg_id")
 
+    balance_id = await ChatRepo.get_balance_id(callback.message.chat.id)
+
     try:
         if sv_msg_id:
             await callback.bot.delete_message(callback.message.chat.id, sv_msg_id)
@@ -91,7 +95,7 @@ async def sv_today(callback: CallbackQuery, state: FSMContext):
     tomorrow = today + timedelta(days=1)
 
     await show_checks_for_period(
-        callback.message, callback.message.chat.id, today, tomorrow, "Сегодня", state
+        callback.message, balance_id, today, tomorrow, "Сегодня", state
     )
 
 
@@ -101,6 +105,8 @@ async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
     await callback.answer("📆 Загрузка чеков за вчера...")
     data = await state.get_data()
     sv_msg_id = data.get("sv_msg_id")
+
+    balance_id = await ChatRepo.get_balance_id(callback.message.chat.id)
 
     try:
         if sv_msg_id:
@@ -112,7 +118,7 @@ async def sv_yesterday(callback: CallbackQuery, state: FSMContext):
     yesterday = today - timedelta(days=1)
 
     await show_checks_for_period(
-        callback.message, callback.message.chat.id, yesterday, today, "Вчера", state
+        callback.message, balance_id, yesterday, today, "Вчера", state
     )
 
 
@@ -151,6 +157,8 @@ async def process_custom_date(message: Message, state: FSMContext):
 
     data = await state.get_data()
     sv_msg_id = data.get("sv_msg_id")
+
+    balance_id = await ChatRepo.get_balance_id(message.chat.id)
 
     try:
         if sv_msg_id:
@@ -198,20 +206,20 @@ async def process_custom_date(message: Message, state: FSMContext):
 
     next_date = target_date + timedelta(days=1)
     await show_checks_for_period(
-        message, message.chat.id, target_date, next_date, period_name, state
+        message, balance_id, target_date, next_date, period_name, state
     )
 
 
 async def show_checks_for_period(
     message: Message,
-    chat_id: int,
+    balance_id: int,
     start_date,
     end_date,
     period_name: str,
     state: FSMContext,
 ):
-    checks = await OperationRepo.get_checks_by_date(chat_id, start_date, end_date)
-    contractor_name = await ChatRepo.get_contractor_name(chat_id)
+    checks = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
+    contractor_name = await BalanceRepo.get_contractor_name(balance_id)
 
     if not checks:
         await state.clear()

@@ -1,6 +1,9 @@
 from aiogram.fsm.state import State, StatesGroup
 
 
+class MassExchange(StatesGroup):
+    waiting_rate = State()
+
 class CheckStates(StatesGroup):
     waiting_for_amount = State()
     waiting_for_file = State()

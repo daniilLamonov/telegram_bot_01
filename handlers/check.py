@@ -673,13 +673,7 @@ async def process_delete_confirmation(callback: CallbackQuery):
 
     balance_id = await ChatRepo.get_balance_id(chat_id)
 
-    # balance_rub, balance_usdt = await ChatRepo.get_balance(operation_chat_id)
-
-    # balance_rub = balance_rub - int(amount)
-
     result = await OperationRepo.delete_operation(operation_id)
-
-    # await ChatRepo.update_balance(operation_chat_id, balance_rub, balance_usdt)
 
     await BalanceRepo.add(balance_id, -amount)
 

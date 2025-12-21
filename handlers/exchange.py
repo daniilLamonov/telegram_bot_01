@@ -1,13 +1,17 @@
 import re
 from datetime import datetime, timedelta
 import pytz
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
+from states import MassExchange
+from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
@@ -96,68 +100,98 @@ async def cmd_ch(message: Message):
 
 
 @router.message(Command("chall"), IsAdminFilter())
-async def cmd_chall(message: Message):
+async def cmd_chall(message: Message, state: FSMContext):
     if message.from_user.id not in settings.SUPER_ADMIN_ID:
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
     await delete_message(message)
-    match = re.search(r"/chall\s+(\d+(?:[.,]\d+)?)", message.text)
-    if not match:
+
+    start_date, end_date, err = parse_date_period(message.text, "/chall")
+    now_date = datetime.now(moscow_tz).replace(tzinfo=None)
+
+    if end_date >= now_date:
+        err = "Нельзя обменивать чеки за сегодня"
+
+    if err:
+        await temp_msg(message, err)
+        return
+
+    await state.set_state(MassExchange.waiting_rate)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отмена", callback_data="cancel_all")
+
+    bot_message = await message.answer(
+        f"<b>Если вы уверены, что хотите совершить обмен всех чеков за период</b>\n"
+        f"<b>С {start_date} по {end_date}</b>\n"
+        "Укажите курс просто числом:",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+
+    await state.update_data(
+        start_date=start_date,
+        end_date=end_date,
+        initial_msg_id=bot_message.message_id,
+    )
+
+
+@router.message(MassExchange.waiting_rate)
+async def receive_rate(message: Message, state: FSMContext):
+    text = (message.text or "").strip().replace(",", ".")
+    try:
+        rate = float(text)
+    except (ValueError, TypeError):
         await temp_msg(
             message,
-            "❌ <b>Неверный формат!</b>\n\n"
-            "Формат: <b>/chall курс</b>\n\n"
-            "Пример:\n"
-            "• /chall 90",
-            parse_mode="HTML",
+            "❌ Курс должен быть числом. Пример: <code>95.5</code>",
+            parse_mode="HTML"
         )
         return
-    try:
-        rate = float(match.group(1).replace(",", "."))
-        if rate <= 0:
-            await temp_msg(message, "❌ Курс должен быть > 0")
-            return
-        user_id = message.from_user.id
-        username = message.from_user.username or message.from_user.first_name
-        balances = await BalanceRepo.get_all()
-        start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        # start_date = (datetime.now(moscow_tz).replace(tzinfo=None) - timedelta(days=0)).replace(
-        #     hour=0, minute=0, second=0, microsecond=0
-        # )
-        end_date = start_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+    if rate <= 0:
+        await temp_msg(message, "❌ Курс должен быть больше нуля")
+        return
 
-        report_lines = [f"<b>Массовый обмен по курсу: {rate}</b>\n"]
-        report_lines.append(f"Период: {start_date.strftime('%d.%m.%Y')}\n")
+    data = await state.get_data()
+    start_date = data["start_date"]
+    end_date = data["end_date"]
 
-        total_rub = 0
-        total_usdt = 0
-        total_commission = 0
-        successful_chats = 0
+    user_id = message.from_user.id
+    username = message.from_user.username or message.from_user.first_name
+    balances = await BalanceRepo.get_all()
 
-        for balance in balances:
-            balance_id = balance["id"]
-            contractor_name = balance["name"]
-            balance_rub = float(balance["balance_rub"])
-            operations = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
-            amount_rub = float(sum(op["amount"] for op in operations))
-            if amount_rub <= 0:
-                report_lines.append(f"\n⚪️ Чат <code>{contractor_name}</code>: нет чеков за вчера")
+    report_lines = [f"<b>Массовый обмен по курсу: {rate}</b>\n"]
+    report_lines.append(f"Период: {start_date.strftime('%d.%m.%Y')}\n")
+
+    total_rub = 0
+    total_usdt = 0
+    total_commission = 0
+    successful_chats = 0
+
+    for balance in balances:
+        balance_id = balance["id"]
+        contractor_name = balance["name"]
+        commission = float(balance["commission_percent"])
+        operations = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
+        amount_rub = 0
+        for operation in operations:
+            operation_id = operation["operation_id"]
+            if operation["exchange_rate"] is None:
+                amount_rub += float(operation["amount"])
+                await OperationRepo.update_operation(
+                    operation_id,
+                    exchange_rate=rate)
+            else:
                 continue
-            if balance_rub < amount_rub:
-                report_lines.append(
-                    f"\n❌ Чат <code>{contractor_name}</code>: недостаточно ₽\n"
-                    f"   Нужно: {amount_rub:.2f} ₽\n"
-                    f"   Есть: {balance_rub:.2f} ₽"
-                )
-                continue
+
+        if amount_rub == 0:
+            report_lines.append(f"\n⚪️ Чат <code>{contractor_name}</code>: нет чеков для обмена")
+
+        else:
             amount_usdt = amount_rub / rate
-            commission = float(balance["commission_percent"])
             amount_after_commission, commission_amount = await calculate_commission(
                 balance_id, amount_usdt, user_id, username, commission
             )
-
             await BalanceRepo.add(balance_id, -amount_rub, amount_after_commission)
             await OperationRepo.log_operation(
                 balance_id,
@@ -182,18 +216,16 @@ async def cmd_chall(message: Message):
             total_commission += commission_amount
             successful_chats += 1
 
-        report_lines.append(
-            f"\n\n📊 <b>Итого:</b>\n"
-            f"✅ Обработано чатов: {successful_chats}\n"
-            f"💸 Всего списано: {total_rub:.2f} ₽\n"
-            f"💵 Всего получено: {total_usdt:.2f} USDT\n"
-            f"💰 Всего комиссия: {total_commission:.2f} USDT"
-        )
-        report = "\n".join(report_lines).replace(".", ",")
+    report_lines.append(
+        f"\n\n📊 <b>Итого:</b>\n"
+        f"✅ Обработано чатов: {successful_chats}\n"
+        f"💸 Всего списано: {total_rub:.2f} ₽\n"
+        f"💵 Всего получено: {total_usdt:.2f} USDT\n"
+        f"💰 Всего комиссия: {total_commission:.2f} USDT"
+    )
+    report = "\n".join(report_lines).replace(".", ",")
 
-        await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
-    except (ValueError, IndexError):
-        await temp_msg(message, "Ошибка: введите корректные значения")
+    await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
 
 
 async def calculate_commission(balance_id, amount_usdt, user_id, username, commission):
@@ -210,3 +242,18 @@ async def calculate_commission(balance_id, amount_usdt, user_id, username, commi
         description=f"Комиссия на момент обмена: {commission}%"
     )
     return amount_after_commission, commission_amount
+
+
+@router.callback_query(F.data == "cancel_all")
+async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+
+    message_to_delete = data.get("initial_msg_id")
+
+    if message_to_delete:
+        try:
+            await callback.bot.delete_message(callback.message.chat.id, message_to_delete)
+        except Exception:
+            pass
+
+    await state.clear()

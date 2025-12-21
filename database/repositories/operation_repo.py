@@ -211,7 +211,7 @@ class OperationRepo(BaseRepository):
     ) -> List[dict]:
         results = await cls._fetch(
             """
-                                    SELECT operation_id, username, amount, timestamp, description
+                                    SELECT operation_id, username, amount, timestamp, description, exchange_rate
                                     FROM operations
                                     WHERE balance_id = $1
                                       AND operation_type = 'пополнение_руб_чек'
@@ -272,6 +272,7 @@ class OperationRepo(BaseRepository):
             cls,
             operation_id: str,
             amount: float = None,
+            exchange_rate: float = None,
             description: str = None,
             timestamp: datetime = None,
     ) -> bool:
@@ -282,6 +283,11 @@ class OperationRepo(BaseRepository):
         if amount is not None:
             updates.append(f"amount = ${param_idx}")
             params.append(amount)
+            param_idx += 1
+
+        if exchange_rate is not None:
+            updates.append(f"exchange_rate = ${param_idx}")
+            params.append(exchange_rate)
             param_idx += 1
 
         if description is not None:

@@ -21,7 +21,7 @@ def upgrade() -> None:
     2. Создаём таблицу balances с UUID PK
     3. Наполняем balances из chats (по contractor_name)
     4. Добавляем chats.balance_id (UUID) и связываем с balances
-    5. Удаляем balance_rub/balance_usdt/commission_percent из chats
+    5. Удаляем balance_rub/balance_usdt/commission_percent/contractor_name из chats
     6. Добавляем operations.balance_id (UUID) и заполняем через chats
     7. Удаляем chat_id из operations
     """
@@ -137,7 +137,7 @@ def upgrade() -> None:
         """
     )
 
-    # 5. Удаляем балансные поля из chats (они теперь в balances)
+    # 5. Удаляем балансные поля и contractor_name из chats
     op.execute(
         """
         ALTER TABLE chats
@@ -159,7 +159,12 @@ def upgrade() -> None:
         """
     )
 
-    # contractor_name оставляем для удобства отображения
+    op.execute(
+        """
+        ALTER TABLE chats
+        DROP COLUMN IF EXISTS contractor_name
+        """
+    )
 
     # 6. Добавляем balance_id в operations и заполняем через chats
     op.execute(
@@ -224,12 +229,13 @@ def downgrade() -> None:
     Откат:
     1. Вернуть chat_id в operations (пустой, без восстановления данных)
     2. Удалить FK и колонку balance_id из operations
-    3. Вернуть балансные поля в chats
-    4. Перенести значения из balances обратно в chats
-    5. Удалить FK и balance_id из chats
-    6. Удалить balances
+    3. Вернуть contractor_name в chats и заполнить из balances
+    4. Вернуть балансные поля в chats
+    5. Перенести значения из balances обратно в chats
+    6. Удалить FK и balance_id из chats
+    7. Удалить balances
     """
-    # 1. operations: возвращаем chat_id, чтобы схема совпала с прошлой
+    # 1. operations: возвращаем chat_id
     op.execute(
         """
         ALTER TABLE operations
@@ -258,7 +264,24 @@ def downgrade() -> None:
         """
     )
 
-    # 3. chats: возвращаем балансные поля
+    # 3. chats: возвращаем contractor_name и заполняем из balances
+    op.execute(
+        """
+        ALTER TABLE chats
+        ADD COLUMN contractor_name TEXT
+        """
+    )
+
+    op.execute(
+        """
+        UPDATE chats AS c
+        SET contractor_name = b.name
+        FROM balances AS b
+        WHERE c.balance_id = b.id
+        """
+    )
+
+    # 4. chats: возвращаем балансные поля
     op.execute(
         """
         ALTER TABLE chats
@@ -280,7 +303,7 @@ def downgrade() -> None:
         """
     )
 
-    # 4. Переносим значения из balances обратно в chats
+    # 5. Переносим значения из balances обратно в chats
     op.execute(
         """
         UPDATE chats AS c
@@ -293,7 +316,7 @@ def downgrade() -> None:
         """
     )
 
-    # 5. Удаляем FK/индекс и колонку balance_id из chats
+    # 6. Удаляем FK/индекс и колонку balance_id из chats
     op.execute(
         """
         ALTER TABLE chats
@@ -314,7 +337,7 @@ def downgrade() -> None:
         """
     )
 
-    # 6. Удаляем balances
+    # 7. Удаляем balances
     op.execute(
         """
         DROP TABLE IF EXISTS balances CASCADE

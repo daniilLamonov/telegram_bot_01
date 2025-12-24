@@ -80,7 +80,6 @@ async def cmd_init(message: Message):
         chat_id=message.chat.id,
         chat_title=message.chat.title or "",
         chat_type=message.chat.type,
-        contractor_name=contractor_name,
         initialized_by=message.from_user.id,
         balance_id=balance['id'],
     )
@@ -129,19 +128,15 @@ async def cmd_reinit(message: Message):
     if not balance:
         balance = await BalanceRepo.create(contractor_name)
 
-    success = await ChatRepo.initialize_chat(
+    success = await ChatRepo.update_balance(
         chat_id=message.chat.id,
-        chat_title=message.chat.title or "",
-        chat_type=message.chat.type,
-        contractor_name=contractor_name,
-        initialized_by=message.from_user.id,
-        balance_id=balance['id'],
+        balance_id=balance['id']
     )
 
     if success:
         await temp_msg(
             message,
-            f"✅ <b>Чат инициализирован!</b>\n\n"
+            f"✅ <b>Чат реинициализирован!</b>\n\n"
             f"📝 Контрагент: <b>{contractor_name}</b>\n"
             f"🆔 Баланс ID: <code>{balance['id']}</code>\n"
             f"💵 RUB: <code>{balance['balance_rub']:.2f}</code>\n"

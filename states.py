@@ -10,6 +10,8 @@ class CheckStates(StatesGroup):
     editing_check = State()
     editing_date = State()
 
+class CompareStates(StatesGroup):
+    waiting_for_file = State()
 
 class ReconciliationStates(StatesGroup):
     waiting_for_date = State()

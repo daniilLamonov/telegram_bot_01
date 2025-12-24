@@ -129,16 +129,14 @@ async def add_to_queue(message: Message, state: FSMContext):
     processing = data.get("processing", False)
     waiting_for_more = data.get("waiting_for_more", False)
 
-    queue.append(
-        {
-            "file_id": file_id,
-            "file_type": file_type,
-            "file_ext": file_ext,
-            "msg_id": message.message_id,
-            "user_id": message.from_user.id,  # ДОБАВЛЕНО
-            "username": message.from_user.username or message.from_user.first_name,
-        }
-    )
+    queue.append({
+        "file_id": file_id,
+        "file_type": file_type,
+        "file_ext": file_ext,
+        "msg_id": message.message_id,
+        "user_id": message.from_user.id,
+        "username": message.from_user.username or message.from_user.first_name,
+    })
 
     await state.update_data(queue=queue, last_file_time=datetime.now())
     await state.set_state(CheckStates.waiting_for_amount)
@@ -153,7 +151,6 @@ async def add_to_queue(message: Message, state: FSMContext):
 
 
 async def start_processing_after_delay(bot, chat_id, state: FSMContext):
-
     await asyncio.sleep(1)
 
     data = await state.get_data()
@@ -177,7 +174,14 @@ async def start_processing_after_delay(bot, chat_id, state: FSMContext):
             text=f"📝 Получено файлов: {len(queue)}\n\nНачинаю обработку...",
         )
         processing_msg_id = sup_msg.message_id
-        await state.update_data(processing_msg_id=processing_msg_id)
+
+        bot_messages = data.get('bot_messages_to_delete', [])
+        bot_messages.append(processing_msg_id)
+
+        await state.update_data(
+            processing_msg_id=processing_msg_id,
+            bot_messages_to_delete=bot_messages
+        )
         await asyncio.sleep(1)
 
     await process_next_in_queue(bot, chat_id, state)
@@ -190,6 +194,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
     if not queue:
         await show_all_results(bot, chat_id, state)
         return
+
     current_file = queue[0]
     total_files = data.get("total_files", len(queue))
     current_number = total_files - len(queue) + 1
@@ -199,6 +204,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         InlineKeyboardButton(text="Это не чек", callback_data="skip_current"),
         InlineKeyboardButton(text="Это не чеки", callback_data="cancel_all"),
     )
+
     username = current_file.get("username", "Неизвестно")
     caption_text = (
         f'📸 <b>{current_file["file_type"].capitalize()}</b> #{current_number} из {total_files}\n\n'
@@ -206,7 +212,8 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
         f"💰 Напишите сумму и ФИО:\n"
         f"• <code>сумма ФИО</code>\n"
         f"• <code>сумма</code> (если ФИО не указано)\n\n"
-        f"Пример: <code>5 000 Иванов Иван</code> или <code>5 000</code>"
+        f"Пример: <code>5 000 Иванов Иван</code> или <code>5 000</code>\n\n"
+        f"⏰ <i>У вас есть 1 минута</i>"
     )
 
     try:
@@ -227,10 +234,15 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
                 reply_markup=builder.as_markup(),
             )
 
+        # ✅ Сохраняем ID сообщения бота для автоудаления
+        bot_messages = data.get('bot_messages_to_delete', [])
+        bot_messages.append(bot_msg.message_id)
+
         await state.update_data(
             current_bot_msg=bot_msg.message_id,
             current_file=current_file,
             total_files=total_files,
+            bot_messages_to_delete=bot_messages  # ← для middleware
         )
 
     except Exception as e:
@@ -249,49 +261,51 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
 
     text = message.text.strip()
     match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
+
     if not match:
-        await temp_msg(
-            message,
+        error_msg = await message.answer(
             "❌ <b>Неверный формат!</b>\n\n"
             "Напишите:<code>сумма ФИО</code>\n"
-            "Или просто:<code>сумма</code> (если ФИО не указано)\n"
-            "Пример:<code>5 000 Иванов Иван</code> или <code>5 000</code>",
+            "Или просто:<code>сумма</code>\n\n"
+            "⏰ <i>Осталась 1 минута</i>",
             parse_mode="HTML",
         )
+        data = await state.get_data()
+        bot_messages = data.get('bot_messages_to_delete', [])
+        bot_messages.append(error_msg.message_id)
+        await state.update_data(bot_messages_to_delete=bot_messages)
         return
+
     try:
-        amount_str = (
-            match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
-        )
+        amount_str = match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
         amount = float(amount_str)
-
-        payer_info = match.group(2).strip() if match.group(2) else None
-
-        if amount <= 0:
-            await temp_msg(message, "❌ Сумма должна быть больше нуля!")
-            return
-
-        if not payer_info:
-            payer_info = "Не указано"
+        payer_info = match.group(2).strip() if match.group(2) else "Не указано"
 
         if amount <= 0:
-            await temp_msg(message, "❌ Сумма должна быть положительной")
+            error_msg = await message.answer("❌ Сумма должна быть больше нуля!\n⏰ 1 минута")
+            data = await state.get_data()
+            bot_messages = data.get('bot_messages_to_delete', [])
+            bot_messages.append(error_msg.message_id)
+            await state.update_data(bot_messages_to_delete=bot_messages)
             return
 
         data = await state.get_data()
         current_file = data.get("current_file")
-        current_bot_msg = data.get("current_bot_msg")
 
         if not current_file:
             await temp_msg(message, "❌ Ошибка: файл не найден")
+            await state.clear()
             return
+
+        bot_messages = data.get('bot_messages_to_delete', [])
+        for msg_id in bot_messages:
+            try:
+                await message.bot.delete_message(message.chat.id, msg_id)
+            except Exception:
+                pass
+
         try:
             await message.bot.delete_message(message.chat.id, current_file["msg_id"])
-        except Exception:
-            pass
-        try:
-            if current_bot_msg:
-                await message.bot.delete_message(message.chat.id, current_bot_msg)
         except Exception:
             pass
 
@@ -306,24 +320,20 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         try:
             bot = message.bot
             file = await bot.get_file(file_id)
-
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"check_{chat_id}_{timestamp}.{file_ext}"
             filepath = os.path.join(FILES_DIR, filename)
-
             await bot.download_file(file.file_path, filepath)
-
         except Exception as e:
-            await temp_msg(message, f"❌ Ошибка при сохранении файла: {e}")
+            await temp_msg(message, f"❌ Ошибка сохранения: {e}")
             queue = data.get("queue", [])
             if queue:
                 queue.pop(0)
-            await state.update_data(queue=queue)
+            await state.update_data(queue=queue, bot_messages_to_delete=[])
             await process_next_in_queue(message.bot, chat_id, state)
             return
 
-        balance  = await BalanceRepo.get_by_chat(chat_id)
-
+        balance = await BalanceRepo.get_by_chat(chat_id)
         balance_id = balance["id"]
 
         await BalanceRepo.add(balance_id, amount)
@@ -343,29 +353,43 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         safe_contractor = hd.quote(balance["name"])
 
         results_queue = data.get("results_queue", [])
-        results_queue.append(
-            {
-                "file_type": file_type,
-                "op_id": op_id,
-                "payer": safe_payer,
-                "amount": amount,
-                "username": safe_username,
-                "contractor": safe_contractor,
-            }
-        )
+        results_queue.append({
+            "file_type": file_type,
+            "op_id": op_id,
+            "payer": safe_payer,
+            "amount": amount,
+            "username": safe_username,
+            "contractor": safe_contractor,
+        })
+
         queue = data.get("queue", [])
         if queue:
             queue.pop(0)
 
-        await state.update_data(queue=queue, results_queue=results_queue)
+        # ✅ Очищаем список сообщений перед следующим файлом
+        await state.update_data(
+            queue=queue,
+            results_queue=results_queue,
+            bot_messages_to_delete=[]  # ← Сброс для следующего файла
+        )
+
         await process_next_in_queue(message.bot, chat_id, state)
+
     except ValueError:
-        await temp_msg(message, "❌ Неверный формат суммы")
+        await temp_msg(message, "❌ Неверный формат суммы!")
 
 
 async def show_all_results(bot, chat_id, state: FSMContext):
     data = await state.get_data()
     results_queue = data.get("results_queue", [])
+
+    bot_messages = data.get('bot_messages_to_delete', [])
+    for msg_id in bot_messages:
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass
+
     try:
         processing_msg_id = data.get("processing_msg_id")
         if processing_msg_id:
@@ -377,12 +401,14 @@ async def show_all_results(bot, chat_id, state: FSMContext):
 
     if not results_queue:
         return
+
     for result in results_queue:
         amount = result["amount"]
         if amount == int(amount):
             f_amount = f'{int(amount):,}'.replace(',', ' ')
         else:
             f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
         builder = InlineKeyboardBuilder()
         await bot.send_message(
             chat_id=chat_id,
@@ -413,18 +439,28 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
     except Exception:
         pass
 
-    # Переходим к следующему файлу
     queue = data.get("queue", [])
     if queue:
+        current_file = queue[0]
+        try:
+            await callback.bot.delete_message(callback.message.chat.id, current_file["msg_id"])
+        except Exception:
+            pass
         queue.pop(0)
     await state.update_data(queue=queue)
-
     await process_next_in_queue(callback.bot, callback.message.chat.id, state)
 
 
 @router.callback_query(F.data == "cancel_all")
 async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
+
+    bot_messages = data.get('bot_messages_to_delete', [])
+    for msg_id in bot_messages:
+        try:
+            await callback.bot.delete_message(callback.message.chat.id, msg_id)
+        except Exception:
+            pass
 
     messages_to_delete = [
         data.get("current_bot_msg"),
@@ -439,7 +475,17 @@ async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
             except Exception:
                 pass
 
+    queue = data.get("queue", [])
+    for file_item in queue:
+        if file_item.get("msg_id"):
+            try:
+                await callback.bot.delete_message(callback.message.chat.id, file_item["msg_id"])
+            except Exception:
+                pass
+
     await state.clear()
+    await callback.answer("❌ Обработка отменена")
+
 
 
 # ============= ОБРАБОТКА ОШИБОК =============
@@ -559,7 +605,7 @@ async def cmd_history_check(message: Message):
 
     filename = filename_match.group(1)
     filepath = os.path.join(FILES_DIR, filename)
-    balance = await BalanceRepo.get_bal_info_by_id(operation["balance_id"])
+    balance = await BalanceRepo.get_by_id(operation["balance_id"])
 
     contractor_name = balance["name"]
 

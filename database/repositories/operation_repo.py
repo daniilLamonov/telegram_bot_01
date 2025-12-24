@@ -276,29 +276,22 @@ class OperationRepo(BaseRepository):
             description: str = None,
             timestamp: datetime = None,
     ) -> bool:
+        allowed_columns = {
+            'amount': amount,
+            'exchange_rate': exchange_rate,
+            'description': description,
+            'timestamp': timestamp,
+        }
+        
         updates = []
         params = []
         param_idx = 1
 
-        if amount is not None:
-            updates.append(f"amount = ${param_idx}")
-            params.append(amount)
-            param_idx += 1
-
-        if exchange_rate is not None:
-            updates.append(f"exchange_rate = ${param_idx}")
-            params.append(exchange_rate)
-            param_idx += 1
-
-        if description is not None:
-            updates.append(f"description = ${param_idx}")
-            params.append(description)
-            param_idx += 1
-
-        if timestamp is not None:
-            updates.append(f"timestamp = ${param_idx}")
-            params.append(timestamp)
-            param_idx += 1
+        for column, value in allowed_columns.items():
+            if value is not None:
+                updates.append(f"{column} = ${param_idx}")
+                params.append(value)
+                param_idx += 1
 
         if not updates:
             return False

@@ -66,8 +66,6 @@ async def cmd_gets(message: Message):
 
         balance_id = await ChatRepo.get_balance_id(chat_id)
 
-        # balance_rub, balance_usdt = await BalanceRepo.get_by_id(balance_id)
-        # new_balance_usdt = balance_usdt + amount
         await BalanceRepo.add(balance_id, 0.0, amount)
 
         await OperationRepo.log_operation(

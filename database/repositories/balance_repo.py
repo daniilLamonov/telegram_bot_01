@@ -1,7 +1,11 @@
 import uuid
+import logging
 from typing import Optional, Any, Coroutine
+from database.connection import get_pool
 
 from .base import BaseRepository
+
+logger = logging.getLogger(__name__)
 
 
 class BalanceRepo(BaseRepository):
@@ -21,19 +25,7 @@ class BalanceRepo(BaseRepository):
         return dict(row)
 
     @classmethod
-    async def get_by_id(cls, balance_id: uuid.UUID) -> tuple[float, float]:
-        row = await cls._fetchrow(
-            """
-            SELECT balance_rub, balance_usdt
-            FROM balances
-            WHERE id = $1
-            """,
-            balance_id,
-        )
-        return float(row["balance_rub"]), float(row["balance_usdt"])
-
-    @classmethod
-    async def get_bal_info_by_id(cls, balance_id: uuid.UUID) -> dict[str, Any]:
+    async def get_by_id(cls, balance_id: uuid.UUID) -> dict[str, Any]:
         row = await cls._fetchrow(
             """
             SELECT *
@@ -99,6 +91,62 @@ class BalanceRepo(BaseRepository):
             amount_rub,
             amount_usdt,
         )
+
+    @classmethod
+    async def subtract_atomic(
+        cls,
+        balance_id: uuid.UUID,
+        amount_rub: float = 0.0,
+        amount_usdt: float = 0.0,
+    ) -> bool:
+        """
+        Атомарное списание с проверкой баланса в транзакции.
+        Возвращает True если операция успешна, False если недостаточно средств.
+        """
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Проверяем текущий баланс с блокировкой строки
+                balance = await conn.fetchrow(
+                    """
+                    SELECT balance_rub, balance_usdt
+                    FROM balances
+                    WHERE id = $1
+                    FOR UPDATE
+                    """,
+                    balance_id,
+                )
+                
+                if not balance:
+                    logger.warning(f"Баланс с id {balance_id} не найден")
+                    return False
+                
+                new_rub = float(balance['balance_rub']) - amount_rub
+                new_usdt = float(balance['balance_usdt']) - amount_usdt
+                
+                if new_rub < 0 or new_usdt < 0:
+                    logger.warning(
+                        f"Недостаточно средств на балансе {balance_id}. "
+                        f"Требуется: RUB={amount_rub}, USDT={amount_usdt}. "
+                        f"Доступно: RUB={balance['balance_rub']}, USDT={balance['balance_usdt']}"
+                    )
+                    return False
+                
+                # Выполняем списание
+                await conn.execute(
+                    """
+                    UPDATE balances
+                    SET balance_rub  = $2,
+                        balance_usdt = $3,
+                        updated_at   = NOW()
+                    WHERE id = $1
+                    """,
+                    balance_id,
+                    new_rub,
+                    new_usdt,
+                )
+                
+                return True
 
     @classmethod
     async def get_commission(cls, balance_id: int) -> float:

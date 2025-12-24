@@ -8,7 +8,7 @@ from config import settings
 from database.connection import init_db, close_db
 from handlers import router
 from middlewares.register_user import RegisterUserMiddleware
-
+from middlewares.timeout_middleware import StateTimeoutMiddleware
 
 
 async def set_bot_commands(bot: Bot):
@@ -31,6 +31,8 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
+    dp.message.middleware(StateTimeoutMiddleware(timeout_seconds=60))
+    dp.callback_query.middleware(StateTimeoutMiddleware(timeout_seconds=60))
     dp.message.middleware(RegisterUserMiddleware())
     dp.callback_query.middleware(RegisterUserMiddleware())
     dp.message.middleware(ChatInitMiddleware())
@@ -39,8 +41,6 @@ async def main():
     dp.include_router(router)
 
     await set_bot_commands(bot)
-
-    await init_db()
     logger.info("Бот запущен")
 
     try:

@@ -1,6 +1,10 @@
 import asyncpg
+import logging
 from typing import Optional, List, Any
+from contextlib import asynccontextmanager
 from database.connection import get_pool
+
+logger = logging.getLogger(__name__)
 
 
 class BaseRepository:
@@ -28,3 +32,12 @@ class BaseRepository:
         pool = get_pool()
         async with pool.acquire() as conn:
             return await conn.fetchval(query, *args)
+
+    @classmethod
+    @asynccontextmanager
+    async def _transaction(cls):
+        """Контекстный менеджер для транзакций"""
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                yield conn

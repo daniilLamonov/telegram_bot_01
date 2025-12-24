@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
-from database.repositories import ChatRepo, OperationRepo, BalanceRepo
+from database.repositories import OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import MassExchange
 from utils.dateparse import parse_date_period
@@ -63,16 +63,27 @@ async def cmd_ch(message: Message):
         if balance_rub < amount_rub:
             await temp_msg(
                 message,
-                "❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
+                f"❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
             )
             return
+        
         amount_usdt = amount_rub / rate
         commission = float(balance["commission_percent"])
         amount_after_commission, commission_amount = await calculate_commission(
             balance_id, amount_usdt, user_id, username, commission
         )
 
-        await BalanceRepo.add(balance_id, -amount_rub, amount_after_commission)
+        # Используем атомарное списание с проверкой баланса
+        success = await BalanceRepo.subtract_atomic(balance_id, amount_rub, 0.0)
+        if not success:
+            await temp_msg(
+                message,
+                f"❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
+            )
+            return
+        
+        # Пополняем USDT баланс
+        await BalanceRepo.add(balance_id, 0.0, amount_after_commission)
 
         await OperationRepo.log_operation(
             balance_id,
@@ -192,7 +203,15 @@ async def receive_rate(message: Message, state: FSMContext):
             amount_after_commission, commission_amount = await calculate_commission(
                 balance_id, amount_usdt, user_id, username, commission
             )
-            await BalanceRepo.add(balance_id, -amount_rub, amount_after_commission)
+            # Используем атомарное списание
+            success = await BalanceRepo.subtract_atomic(balance_id, amount_rub, 0.0)
+            if not success:
+                report_lines.append(
+                    f"\n❌ Чат <code>{contractor_name}</code>: недостаточно средств для обмена"
+                )
+                continue
+            # Пополняем USDT баланс
+            await BalanceRepo.add(balance_id, 0.0, amount_after_commission)
             await OperationRepo.log_operation(
                 balance_id,
                 user_id,

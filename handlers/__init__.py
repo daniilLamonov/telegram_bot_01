@@ -13,12 +13,12 @@ from aiogram import Router
 router = Router()
 
 router.include_router(callbacks_router)
+router.include_router(export_router)
 router.include_router(check_router)
 router.include_router(common_router)
 router.include_router(balance_up_router)
 router.include_router(payments_router)
 router.include_router(exchange_router)
 router.include_router(help_router)
-router.include_router(export_router)
 router.include_router(history_router)
 router.include_router(admin_router)

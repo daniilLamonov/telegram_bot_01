@@ -2,20 +2,24 @@ import re
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
-from aiogram import Router, F
+import pytz
+from aiogram import Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
+from states import CompareStates
 from utils.excel import export_to_excel, export_comparison_report
 from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="export")
-
+moscow_tz = pytz.timezone('Europe/Moscow')
 SUPER_ADMIN_ID = settings.SUPER_ADMIN_ID
 
 
@@ -105,16 +109,14 @@ async def cmd_export_all(message: Message):
         await message.answer(f"❌ Ошибка при создании отчета: {e}")
 
 
-@router.message(F.document & F.caption & F.caption.contains("/compare"), IsAdminFilter())
-async def cmd_compare(message: Message):
+@router.message(Command("compare"), IsAdminFilter())
+async def cmd_compare(message: Message, state: FSMContext):
     await delete_message(message)
-
-    if not message.document.file_name.endswith('.txt'):
-        await temp_msg(message, "❌ Требуется файл .txt")
+    if message.from_user.id not in SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
-    caption = message.caption.strip()
-    date_match = re.search(r'/compare\s+(\d{2}\.\d{2}\.\d{4})', caption)
+    date_match = re.search(r'/compare\s+(\d{2}\.\d{2}\.\d{4})', message.text)
 
     if date_match:
         target_date_str = date_match.group(1)
@@ -129,9 +131,43 @@ async def cmd_compare(message: Message):
     start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
     end_date = start_date + timedelta(days=1)
 
+    await state.set_state(CompareStates.waiting_for_file)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отмена", callback_data="cancel_all")
+
+    bot_message = await message.answer(
+        f"<b>Чтобы сравнить данные в БД и файле</b>\n"
+        f"Пришлите txt файл\n\n"
+        f"Дата для сравнения: {target_date.strftime('%d.%m.%Y')}\n",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+
+    await state.update_data(
+        start_date=start_date,
+        end_date=end_date,
+        target_date=target_date,
+        initial_msg_id=bot_message.message_id,
+    )
+
+@router.message(CompareStates.waiting_for_file)
+async def receive_file(message: Message, state: FSMContext):
+
+    if not message.document.file_name.endswith('.txt'):
+        await temp_msg(message, "❌ Требуется файл .txt")
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    start_date = data["start_date"]
+    end_date = data["end_date"]
+    target_date = data["target_date"]
+    initial_msg_id = data["initial_msg_id"]
+    await delete_message(initial_msg_id)
+
     processing_msg = await message.answer(
         f"⏳ Обрабатываю файл...\n"
-        f"Дата для сравнения: {target_date.strftime('%d.%m.%Y')}"
     )
 
     try:
@@ -177,6 +213,8 @@ async def cmd_compare(message: Message):
 
         if not file_operations:
             await processing_msg.edit_text("❌ В файле не найдено корректных операций")
+            await state.clear()
+            await delete_message(processing_msg)
             return
 
         target_date_only = target_date.date()
@@ -187,6 +225,8 @@ async def cmd_compare(message: Message):
                 f"а запрошена дата {target_date.strftime('%d.%m.%Y')}\n\n"
                 f"Файл не за тот день!"
             )
+            await state.clear()
+            await delete_message(processing_msg)
             return
 
         db_operations_raw = await OperationRepo.get_all_checks_by_date(
@@ -230,6 +270,7 @@ async def cmd_compare(message: Message):
                 parse_mode="HTML",
                 reply_markup=get_delete_keyboard()
             )
+            await state.clear()
             return
 
         await processing_msg.edit_text("📊 Найдены расхождения. Генерирую отчет...")
@@ -263,6 +304,94 @@ async def cmd_compare(message: Message):
         )
 
         await processing_msg.delete()
+        await state.clear()
 
     except Exception as e:
         await processing_msg.edit_text(f"❌ Ошибка при обработке: {str(e)}")
+
+
+@router.message(Command("r"), IsAdminFilter())
+async def cmd_daily_report(message: Message):
+    await delete_message(message)
+
+    if message.from_user.id not in SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
+        return
+
+    now = datetime.now(moscow_tz).replace(tzinfo=None)
+    start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    all_balances = await BalanceRepo.get_all()
+
+    report_lines = []
+    total_checks = 0
+    total_amount = 0.0
+
+    for balance in all_balances:
+        balance_id = balance["id"]
+        contractor_name = balance["name"]
+
+        if contractor_name == "__default__":
+            continue
+
+        checks = await OperationRepo.get_checks_by_date(balance_id, start_date, now)
+
+        if not checks:
+            continue
+
+        count = len(checks)
+        amount = sum(float(check['amount']) for check in checks)
+
+        total_checks += count
+        total_amount += amount
+
+        if amount == int(amount):
+            formatted_amount = f'{int(amount):,}'.replace(',', ' ')
+        else:
+            formatted_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        if count % 10 == 1 and count % 100 != 11:
+            check_word = "чек"
+        elif 2 <= count % 10 <= 4 and (count % 100 < 10 or count % 100 >= 20):
+            check_word = "чека"
+        else:
+            check_word = "чеков"
+
+        report_lines.append(f"{contractor_name} - {count} {check_word} {formatted_amount}₽")
+
+    if not report_lines:
+        await message.answer(
+            f"📊 Отчёт за {now.strftime('%d.%m.%Y')}\n\n"
+            "Сегодня ещё не было чеков",
+            reply_markup=get_delete_keyboard()
+        )
+        return
+
+    if total_amount == int(total_amount):
+        formatted_total = f'{int(total_amount):,}'.replace(',', ' ')
+    else:
+        formatted_total = f'{total_amount:,.2f}'.replace(',', ' ').replace('.', ',')
+
+    if total_checks % 10 == 1 and total_checks % 100 != 11:
+        total_check_word = "чек"
+    elif 2 <= total_checks % 10 <= 4 and (total_checks % 100 < 10 or total_checks % 100 >= 20):
+        total_check_word = "чека"
+    else:
+        total_check_word = "чеков"
+
+    report_lines.sort(key=lambda x: float(x.split()[-1].replace(' ', '').replace('₽', '').replace(',', '.')),
+                      reverse=True)
+
+    report_text = (
+            f"📊 <b>Количество чеков + сумма {now.strftime('%d.%m.%Y')}:</b>\n\n"
+            + "\n".join(report_lines) +
+            f"\n\n<b>Общее количество чеков = {total_checks} {total_check_word}</b>\n"
+            f"<b>Общая сумма = {formatted_total}₽</b>"
+    )
+
+    await message.answer(
+        report_text,
+        parse_mode="HTML",
+        reply_markup=get_delete_keyboard()
+    )
+

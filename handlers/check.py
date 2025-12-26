@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 from datetime import datetime
+import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -11,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
 from config import settings
-from database.repositories import ChatRepo, OperationRepo, BalanceRepo, UserRepo
+from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import CheckStates
 from utils.helpers import delete_message, temp_msg
@@ -21,6 +22,8 @@ router = Router()
 
 FILES_DIR = settings.FILES_DIR
 os.makedirs(FILES_DIR, exist_ok=True)
+
+logger = logging.getLogger(__name__)
 
 
 # ============= /check С ФОТО И ФИО =============
@@ -106,7 +109,6 @@ async def receive_file_after_check(message: Message, state: FSMContext):
 async def handle_photo_without_command(message: Message, state: FSMContext):
     if message.caption and "/check" in message.caption:
         return
-
     await add_to_queue(message, state)
 
 
@@ -234,7 +236,6 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
                 reply_markup=builder.as_markup(),
             )
 
-        # ✅ Сохраняем ID сообщения бота для автоудаления
         bot_messages = data.get('bot_messages_to_delete', [])
         bot_messages.append(bot_msg.message_id)
 
@@ -242,7 +243,7 @@ async def process_next_in_queue(bot, chat_id, state: FSMContext):
             current_bot_msg=bot_msg.message_id,
             current_file=current_file,
             total_files=total_files,
-            bot_messages_to_delete=bot_messages  # ← для middleware
+            bot_messages_to_delete=bot_messages
         )
 
     except Exception as e:
@@ -306,7 +307,7 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
 
         try:
             await message.bot.delete_message(message.chat.id, current_file["msg_id"])
-        except Exception:
+        except Exception as e:
             pass
 
         chat_id = message.chat.id
@@ -366,17 +367,25 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         if queue:
             queue.pop(0)
 
-        # ✅ Очищаем список сообщений перед следующим файлом
         await state.update_data(
             queue=queue,
             results_queue=results_queue,
-            bot_messages_to_delete=[]  # ← Сброс для следующего файла
+            bot_messages_to_delete=[]
         )
 
         await process_next_in_queue(message.bot, chat_id, state)
 
+
     except ValueError:
         await temp_msg(message, "❌ Неверный формат суммы!")
+        should_clear = True
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка в receive_amount_and_payer: {e}")
+        await temp_msg(message, "❌ Произошла ошибка. Попробуйте снова.")
+        should_clear = True
+    finally:
+        if should_clear:
+            await state.clear()
 
 
 async def show_all_results(bot, chat_id, state: FSMContext):
@@ -535,7 +544,8 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
         await bot.download_file(file.file_path, filepath)
 
     except Exception as e:
-        await temp_msg(message, f"❌ Ошибка при сохранении файла: {e}")
+        await temp_msg(message, f"❌ Ошибка при сохранении файла")
+        logger.error(f"Ошибка при сохранении файла: {e}")
         return
 
     balance = await BalanceRepo.get_by_chat(chat_id)

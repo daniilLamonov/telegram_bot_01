@@ -63,7 +63,7 @@ class ChatRepo(BaseRepository):
                     is_active,
                     balance_id
                 )
-                VALUES ($1, $2, $3 $4, TRUE, $5)
+                VALUES ($1, $2, $3, $4, TRUE, $5)
                 ON CONFLICT (chat_id)
                 DO UPDATE SET
                     chat_title      = EXCLUDED.chat_title,

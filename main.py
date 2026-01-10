@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from config import logger
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault
@@ -20,8 +20,7 @@ async def set_bot_commands(bot: Bot):
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
 
 
 async def main():

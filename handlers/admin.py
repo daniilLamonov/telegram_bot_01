@@ -49,12 +49,13 @@ async def cmd_init(message: Message):
     await delete_message(message)
 
     chat_info = await ChatRepo.get_chat(message.chat.id)
+    balance = await BalanceRepo.get_by_chat(message.chat.id)
 
     if chat_info:
         await temp_msg(
             message,
             f"ℹ️ <b>Чат уже инициализирован</b>\n\n"
-            f"📝 Контрагент: <b>{chat_info['contractor_name']}</b>\n"
+            f"📝 Контрагент: <b>{balance['name']}</b>\n"
             f"📅 Инициализирован: {chat_info['created_at'].strftime('%d.%m.%Y %H:%M')}\n\n"
             f"Используйте /reinit для повторной инициализации",
             parse_mode="HTML",

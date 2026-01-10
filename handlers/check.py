@@ -451,11 +451,6 @@ async def skip_current_file(callback: CallbackQuery, state: FSMContext):
 
     queue = data.get("queue", [])
     if queue:
-        current_file = queue[0]
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, current_file["msg_id"])
-        except Exception:
-            pass
         queue.pop(0)
     await state.update_data(queue=queue)
     await process_next_in_queue(callback.bot, callback.message.chat.id, state)
@@ -485,13 +480,6 @@ async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
             except Exception:
                 pass
 
-    queue = data.get("queue", [])
-    for file_item in queue:
-        if file_item.get("msg_id"):
-            try:
-                await callback.bot.delete_message(callback.message.chat.id, file_item["msg_id"])
-            except Exception:
-                pass
 
     await state.clear()
     await callback.answer("❌ Обработка отменена")

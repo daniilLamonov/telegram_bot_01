@@ -2,7 +2,10 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr, Field
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
 

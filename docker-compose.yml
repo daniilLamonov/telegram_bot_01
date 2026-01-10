@@ -6,12 +6,15 @@ services:
     restart: always
     env_file:
       - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
     volumes:
       - ./files:/app/files
     environment:
       - FILES_DIR=/app/files/checks
-volumes:
-  postgres_data:
+    networks:
+      - shared-network
+    depends_on:
+        - postgres
+
+networks:
+  shared-network:
+    external: true

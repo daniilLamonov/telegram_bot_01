@@ -1,0 +1,17 @@
+aiogram==3.0.0b11
+asyncpg
+python-dotenv
+openpyxl
+alembic
+SQLAlchemy
+
+[develop]
+ruff
+mypy
+
+[test]
+pytest
+pytest-asyncio
+pytest-cov
+unittest2
+coverage

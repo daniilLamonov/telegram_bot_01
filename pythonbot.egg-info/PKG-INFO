@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: pythonbot
+Version: 0.1.0
+Summary: A Telegram bot for balance management and exchange operations
+Author-email: Your Name <your.email@example.com>
+Project-URL: Homepage, https://github.com/yourusername/pythonbot
+Project-URL: Bug Tracker, https://github.com/yourusername/pythonbot/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Requires-Dist: aiogram==3.0.0b11
+Requires-Dist: asyncpg
+Requires-Dist: python-dotenv
+Requires-Dist: openpyxl
+Requires-Dist: alembic
+Requires-Dist: SQLAlchemy
+Provides-Extra: test
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pytest-asyncio; extra == "test"
+Requires-Dist: pytest-cov; extra == "test"
+Requires-Dist: unittest2; extra == "test"
+Requires-Dist: coverage; extra == "test"
+Provides-Extra: develop
+Requires-Dist: ruff; extra == "develop"
+Requires-Dist: mypy; extra == "develop"
+Dynamic: requires-python

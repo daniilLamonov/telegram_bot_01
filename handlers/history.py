@@ -2,12 +2,14 @@ import re
 from datetime import datetime, timedelta
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramNetworkError, TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import html_decoration as hd
 
+from main import logger
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import ReconciliationStates
@@ -303,8 +305,18 @@ async def show_checks_for_period(
 
 @router.callback_query(F.data == "sv_cancel")
 async def sv_cancel(callback: CallbackQuery, state: FSMContext):
-    await callback.answer("❌ Отменено")
 
+    try:
+        await callback.answer("❌ Отменено")
+    except TelegramBadRequest as e:
+        if "query is too old" in str(e).lower():
+            logger.warning(f"Callback query {callback.id} expired")
+        else:
+            logger.error(f"Bad request on callback answer: {e}")
+    except TelegramNetworkError as e:
+        logger.error(f"Network error answering callback {callback.id}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error answering callback: {e}", exc_info=True)
     try:
         await callback.message.delete()
     except Exception:

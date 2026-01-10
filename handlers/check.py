@@ -263,6 +263,8 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
     text = message.text.strip()
     match = re.search(r"^([\d\s.,]+?)(?:\s+([а-яА-ЯёЁa-zA-Z\s]+))?$", text)
 
+    should_clear = False
+
     if not match:
         error_msg = await message.answer(
             "❌ <b>Неверный формат!</b>\n\n"
@@ -276,7 +278,6 @@ async def receive_amount_and_payer(message: Message, state: FSMContext):
         bot_messages.append(error_msg.message_id)
         await state.update_data(bot_messages_to_delete=bot_messages)
         return
-
     try:
         amount_str = match.group(1).replace(" ", "").replace("\u00a0", "").replace(",", ".")
         amount = float(amount_str)

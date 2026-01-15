@@ -1,18 +1,18 @@
 import re
 from datetime import datetime, timedelta
 import pytz
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import settings
-from database.repositories import OperationRepo, BalanceRepo
+from config import settings, logger
+from database.repositories import OperationRepo, BalanceRepo, ChatRepo
 from filters.admin import IsAdminFilter
 from states import MassExchange
 from utils.dateparse import parse_date_period
-from utils.helpers import delete_message, temp_msg
+from utils.helpers import delete_message, temp_msg, format_amount
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="exchange")
@@ -120,6 +120,10 @@ async def cmd_chall(message: Message, state: FSMContext):
     start_date, end_date, err = parse_date_period(message.text, "/chall")
     now_date = datetime.now(moscow_tz).replace(tzinfo=None)
 
+    if end_date is None:
+        await temp_msg(message, "Необходимо указать даты")
+        return
+
     if end_date >= now_date:
         err = "Нельзя обменивать чеки за сегодня"
 
@@ -148,7 +152,7 @@ async def cmd_chall(message: Message, state: FSMContext):
 
 
 @router.message(MassExchange.waiting_rate)
-async def receive_rate(message: Message, state: FSMContext):
+async def receive_rate(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip().replace(",", ".")
     try:
         rate = float(text)
@@ -178,10 +182,12 @@ async def receive_rate(message: Message, state: FSMContext):
     total_usdt = 0
     total_commission = 0
     successful_chats = 0
+    gen_chats = await ChatRepo.get_general_chats()
 
     for balance in balances:
         balance_id = balance["id"]
         contractor_name = balance["name"]
+        chats = await ChatRepo.get_by_balance_id(balance_id)
         commission = float(balance["commission_percent"])
         operations = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
         amount_rub = 0
@@ -203,14 +209,12 @@ async def receive_rate(message: Message, state: FSMContext):
             amount_after_commission, commission_amount = await calculate_commission(
                 balance_id, amount_usdt, user_id, username, commission
             )
-            # Используем атомарное списание
             success = await BalanceRepo.subtract_atomic(balance_id, amount_rub, 0.0)
             if not success:
                 report_lines.append(
                     f"\n❌ Чат <code>{contractor_name}</code>: недостаточно средств для обмена"
                 )
                 continue
-            # Пополняем USDT баланс
             await BalanceRepo.add(balance_id, 0.0, amount_after_commission)
             await OperationRepo.log_operation(
                 balance_id,
@@ -222,24 +226,41 @@ async def receive_rate(message: Message, state: FSMContext):
                 exchange_rate=rate,
                 description=f"Получено: {amount_usdt:.2f} USDT",
             )
-            report_lines.append(
-                f"\n✅ Чат <code>{contractor_name}</code>:\n"
-                f"Чеков: {len(operations)}\n"
-                f"Списано: {amount_rub:.2f} ₽\n"
-                f"Получено: {amount_usdt:.2f} USDT\n"
+            f_amount_rub = format_amount(amount_rub)
+            f_amount_usdt = format_amount(amount_usdt)
+            chat_report = (
+                f"\n✅ Баланс <code>{contractor_name}</code>:\n"
+                f"Чеков за период: {len(operations)}\n"
+                f"Списано: {f_amount_rub} ₽\n"
+                f"Получено: {f_amount_usdt} USDT\n"
                 f"Комиссия: {commission_amount:.2f} USDT ({commission}%)\n"
                 f"К балансу: {amount_after_commission:.2f} USDT"
+                f"Период списания: {start_date} - {end_date}"
             )
+            report_lines.append(chat_report)
+            for chat_id in chats:
+                if chat_id in gen_chats:
+                    try:
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text=chat_report,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
             total_rub += amount_rub
             total_usdt += amount_after_commission
             total_commission += commission_amount
             successful_chats += 1
 
+    f_total_rub = format_amount(total_rub)
+    f_total_usdt = format_amount(total_usdt)
+
     report_lines.append(
         f"\n\n📊 <b>Итого:</b>\n"
         f"✅ Обработано чатов: {successful_chats}\n"
-        f"💸 Всего списано: {total_rub:.2f} ₽\n"
-        f"💵 Всего получено: {total_usdt:.2f} USDT\n"
+        f"💸 Всего списано: {f_total_rub} ₽\n"
+        f"💵 Всего получено: {f_total_usdt} USDT\n"
         f"💰 Всего комиссия: {total_commission:.2f} USDT"
     )
     report = "\n".join(report_lines).replace(".", ",")

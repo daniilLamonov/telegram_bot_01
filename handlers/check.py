@@ -15,7 +15,7 @@ from config import settings
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import CheckStates
-from utils.helpers import delete_message, temp_msg
+from utils.helpers import delete_message, temp_msg, format_amount
 from utils.keyboards import get_delete_keyboard
 
 router = Router()
@@ -558,10 +558,7 @@ async def process_check_operation(message: Message, amount: float, payer_info: s
     safe_payer = hd.quote(payer_info)
     safe_username = hd.quote(username)
     safe_contractor = hd.quote(balance["name"])
-    if amount == int(amount):
-        f_amount = f'{int(amount):,}'.replace(',', ' ')
-    else:
-        f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+    f_amount = format_amount(amount)
     builder = InlineKeyboardBuilder()
     await message.answer(
         f"✅<b>Баланс пополнен</b> по чеку ({file_type})\n"
@@ -980,7 +977,7 @@ async def start_edit_date(callback: CallbackQuery, state: FSMContext):
         f"Введите новую дату:\n"
         f"• <code>ДД.ММ.ГГГГ</code> - время будет 00:00\n\n"
         f"Примеры:\n"
-        f"<code>15.12.2025</code>",
+        f"<code>12.01.2026</code>",
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
@@ -1005,7 +1002,7 @@ async def process_edit_date(message: Message, state: FSMContext):
             "Используйте:\n"
             "• <code>ДД.ММ.ГГГГ</code>\n\n"
             "Примеры:\n"
-            "<code>15.12.2025</code>",
+            "<code>12.01.2026</code>",
             parse_mode="HTML",
         )
         return

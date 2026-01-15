@@ -151,8 +151,7 @@ async def cmd_reinit(message: Message):
 @router.message(Command("setadmin"))
 async def cmd_setadmin(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.SUPER_ADMIN_ID:
-        await temp_msg(message, "❌ У вас нет прав для этой команды")
+    if await is_not_super_admin(message):
         return
 
     if not message.reply_to_message:
@@ -182,8 +181,7 @@ async def cmd_setadmin(message: Message):
 @router.message(Command("removeadmin"))
 async def cmd_removeadmin(message: Message):
     await delete_message(message)
-    if message.from_user.id not in settings.SUPER_ADMIN_ID:
-        await temp_msg(message, "❌ У вас нет прав для этой команды")
+    if await is_not_super_admin(message):
         return
 
     if not message.reply_to_message:
@@ -211,8 +209,7 @@ async def cmd_removeadmin(message: Message):
 
 @router.message(Command("newsletter"))
 async def cmd_newsletter(message: Message, state: FSMContext):
-    if message.from_user.id not in settings.SUPER_ADMIN_ID:
-        await temp_msg(message, "❌ У вас нет прав для этой команды")
+    if await is_not_super_admin(message):
         return
     await delete_message(message)
 
@@ -316,3 +313,60 @@ async def process_newsletter_text(message: Message, state: FSMContext):
 
     await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
     await state.clear()
+
+@router.message(Command("gen"), IsAdminFilter())
+async def cmd_set_general(message: Message):
+    if await is_not_super_admin(message):
+        return
+
+    await delete_message(message)
+
+    chat_id = message.chat.id
+    balance = await BalanceRepo.get_by_chat(chat_id)
+
+    if not balance:
+        await temp_msg(message, "❌ Чат не зарегистрирован в системе")
+        return
+
+    success = await ChatRepo.set_general_status(chat_id, True)
+
+    if success:
+        await temp_msg(
+            message,
+            f"✅ Чат <code>{balance['name']}</code> теперь помечен как ГКА",
+            parse_mode="HTML"
+        )
+    else:
+        await temp_msg(message, "❌ Ошибка при установке статуса ГКА")
+
+@router.message(Command("delgen"), IsAdminFilter())
+async def cmd_remove_general(message: Message):
+    if await is_not_super_admin(message):
+        return
+
+    await delete_message(message)
+
+    chat_id = message.chat.id
+    balance = await BalanceRepo.get_by_chat(chat_id)
+
+    if not balance:
+        await temp_msg(message, "❌ Чат не зарегистрирован в системе")
+        return
+
+    success = await ChatRepo.set_general_status(chat_id, False)
+
+    if success:
+        await temp_msg(
+            message,
+            f"✅ Статус ГКА снят с чата",
+            parse_mode="HTML"
+        )
+    else:
+        await temp_msg(message, "❌ Ошибка при снятии статуса ГКА")
+
+
+async def is_not_super_admin(message: Message) -> bool:
+    if message.from_user.id not in settings.SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
+        return True
+    return False

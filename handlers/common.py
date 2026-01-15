@@ -9,7 +9,7 @@ from aiogram.types import Message
 from database.repositories import BalanceRepo, OperationRepo, ChatRepo
 from filters.admin import IsAdminFilter
 
-from utils.helpers import delete_message
+from utils.helpers import delete_message, format_amount
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="common")
@@ -38,11 +38,14 @@ async def cmd_bal(message: Message):
     balance_usdt = float(balance["balance_usdt"])
     commission = float(balance["commission_percent"] or 0)
 
+    f_balance_rub = format_amount(balance_rub)
+    f_balance_usdt = format_amount(balance_usdt)
+
     await message.answer(
         (
             f'Баланс контрагента: "{contractor}"\n'
-            f"{balance_rub:.2f} ₽\n"
-            f"{balance_usdt:.2f} $\n"
+            f"{f_balance_rub} ₽\n"
+            f"{f_balance_usdt} $\n"
             f"Комиссия: {commission:.2f}%"
         ).replace(".", ","),
         reply_markup=get_delete_keyboard(),

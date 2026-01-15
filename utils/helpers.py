@@ -19,3 +19,10 @@ async def delete_message(message: Message):
         await message.delete()
     except Exception as e:
         logger.debug(f"Не удалось удалить сообщение: {e}")
+
+def format_amount(amount: float):
+    if amount == int(amount):
+        f_amount = f'{int(amount):,}'.replace(',', ' ')
+    else:
+        f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+    return f_amount

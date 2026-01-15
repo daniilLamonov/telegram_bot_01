@@ -69,7 +69,7 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
         "• <b>Вчера</b> - все чеки за вчерашний день\n"
         "• <b>Ввести дату</b> - укажите конкретную дату\n\n"
         "Формат ввода даты: <code>ДД.ММ.ГГГГ</code>\n"
-        "Пример: <code>10.12.2025</code>"
+        "Пример: <code>12.01.2026</code>"
     )
 
     bot_msg = await message.answer(
@@ -143,7 +143,7 @@ async def sv_custom(callback: CallbackQuery, state: FSMContext):
     bot_msg = await callback.message.answer(
         "📝 <b>Введите дату сверки</b>\n\n"
         "Формат: <code>ДД.ММ.ГГГГ</code>\n"
-        "Пример: <code>10.12.2025</code>\n\n"
+        "Пример: <code>12.01.2026</code>\n\n"
         "Или <code>сегодня</code> / <code>вчера</code>",
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
@@ -186,7 +186,7 @@ async def process_custom_date(message: Message, state: FSMContext):
                 message,
                 "❌ <b>Неверный формат даты!</b>\n\n"
                 "Используйте: <code>ДД.ММ.ГГГГ</code>\n"
-                "Пример: <code>10.12.2025</code>",
+                "Пример: <code>12.01.2026</code>",
                 10,
                 parse_mode="HTML",
             )

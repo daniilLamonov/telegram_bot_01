@@ -1,5 +1,6 @@
 from typing import Optional
 from .base import BaseRepository
+from config import logger
 
 
 class ChatRepo(BaseRepository):
@@ -93,7 +94,6 @@ class ChatRepo(BaseRepository):
         )
         return [dict(row) for row in rows]
 
-    # database/repositories/chat_repo.py
 
     @classmethod
     async def update_balance(cls, chat_id: int, balance_id: str) -> bool:
@@ -110,5 +110,54 @@ class ChatRepo(BaseRepository):
             )
             return True
         except Exception as e:
-            print(f"Ошибка обновления баланса чата: {e}")
+            logger(f"Ошибка обновления баланса чата: {e}")
             return False
+
+    @classmethod
+    async def get_by_balance_id(cls, balance_id: str) -> list[int]:
+        try:
+            rows = await cls._fetch(
+                """
+                SELECT chat_id
+                FROM chats
+                WHERE balance_id = $1
+                """,
+                balance_id,
+            )
+            return [row["chat_id"] for row in rows] if rows else []
+        except Exception as e:
+            logger.error(f"Ошибка чата: {e}")
+            return []
+
+    @classmethod
+    async def set_general_status(cls, chat_id: int, is_general: bool) -> bool:
+        try:
+            result = await cls._fetchval(
+                """
+                UPDATE chats
+                SET is_general = $1
+                WHERE chat_id = $2
+                RETURNING chat_id
+                """,
+                is_general,
+                chat_id,
+            )
+            return result is not None
+        except Exception as e:
+            logger.error(f"Ошибка чата: {e}")
+            return False
+
+    @classmethod
+    async def get_general_chats(cls) -> list:
+        try:
+            rows = await cls._fetch(
+                """
+                SELECT chat_id
+                FROM chats
+                WHERE is_general = TRUE
+                """
+            )
+            return [row["chat_id"] for row in rows] if rows else []
+        except Exception as e:
+            logger.error(f"Ошибка обновления баланса чата: {e}")
+            return []

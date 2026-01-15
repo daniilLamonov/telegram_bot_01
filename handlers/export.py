@@ -123,7 +123,7 @@ async def cmd_compare(message: Message, state: FSMContext):
         try:
             target_date = datetime.strptime(target_date_str, "%d.%m.%Y")
         except ValueError:
-            await temp_msg(message, "❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ\nПример: /compare 11.12.2025")
+            await temp_msg(message, "❌ Неверный формат даты. Используйте: ДД.ММ.ГГГГ\nПример: /compare 12.01.2026")
             return
     else:
         target_date = datetime.now(timezone(timedelta(hours=3))).replace(tzinfo=None)

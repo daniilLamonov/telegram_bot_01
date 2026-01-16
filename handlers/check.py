@@ -710,10 +710,11 @@ async def process_delete_confirmation(callback: CallbackQuery):
             await callback.message.delete()
         except Exception:
             pass
-    chat_id = operation["chat_id"]
     amount = operation["amount"]
 
-    balance_id = await ChatRepo.get_balance_id(chat_id)
+    balance_id = operation["balance_id"]
+
+    contractor_name = await BalanceRepo.get_contractor_name(balance_id)
 
     result = await OperationRepo.delete_operation(operation_id)
 
@@ -724,7 +725,7 @@ async def process_delete_confirmation(callback: CallbackQuery):
             (
                 f"✅ Операция удалена успешно!\n\n"
                 f"ID: {operation_id}\n"
-                f"Чат ID: {chat_id}\n"
+                f"Баланс: {contractor_name}\n"
                 f"Сумма: {amount:.2f}\n\n"
             ).replace(".", ","),
             parse_mode="HTML",

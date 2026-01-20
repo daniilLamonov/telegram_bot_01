@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from aiogram import Router, F
@@ -220,11 +221,15 @@ async def cmd_newsletter(message: Message, state: FSMContext):
 
     bot_message = await message.answer(
         "📢 <b>Рассылка сообщений</b>\n\n"
-        "Отправьте текст для рассылки по всем чатам.\n"
-        "Можете использовать HTML форматирование:\n"
+        "Отправьте текст, фото или документ для рассылки.\n\n"
+        "💡 <b>Варианты отправки:</b>\n"
+        "• Просто текст (с HTML форматированием)\n"
+        "• Фото с подписью\n"
+        "📝 <b>HTML форматирование:</b>\n"
         "• <code>&lt;b&gt;жирный&lt;/b&gt;</code>\n"
         "• <code>&lt;i&gt;курсив&lt;/i&gt;</code>\n"
-        "• <code>&lt;code&gt;код&lt;/code&gt;</code>",
+        "• <code>&lt;code&gt;код&lt;/code&gt;</code>\n"
+        "• <code>&lt;a href='url'&gt;ссылка&lt;/a&gt;</code>",
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
@@ -242,9 +247,57 @@ async def cancel_newsletter(callback: CallbackQuery, state: FSMContext):
         pass
 
 
-@router.message(NewsletterStates.waiting_for_text)
+@router.message(NewsletterStates.waiting_for_text, F.photo)
+async def process_newsletter_photo(message: Message, state: FSMContext):
+    photo_file_id = message.photo[-1].file_id
+    caption = message.caption or ""
+
+    await delete_message(message)
+
+    data = await state.get_data()
+    prompt_msg_id = data.get("newsletter_prompt_msg_id")
+    if prompt_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, prompt_msg_id)
+        except Exception:
+            pass
+
+    await state.update_data(
+        content_type="photo",
+        file_id=photo_file_id,
+        caption=caption
+    )
+
+    await send_newsletter(message, state)
+
+
+# @router.message(NewsletterStates.waiting_for_text, F.document)
+# async def process_newsletter_document(message: Message, state: FSMContext):
+#     document_file_id = message.document.file_id
+#     caption = message.caption or ""
+#
+#     await delete_message(message)
+#
+#     data = await state.get_data()
+#     prompt_msg_id = data.get("newsletter_prompt_msg_id")
+#     if prompt_msg_id:
+#         try:
+#             await message.bot.delete_message(message.chat.id, prompt_msg_id)
+#         except Exception:
+#             pass
+#
+#     await state.update_data(
+#         content_type="document",
+#         file_id=document_file_id,
+#         caption=caption
+#     )
+#
+#     await send_newsletter(message, state)
+
+
+@router.message(NewsletterStates.waiting_for_text, F.text)
 async def process_newsletter_text(message: Message, state: FSMContext):
-    newsletter_text = message.text or message.caption
+    newsletter_text = message.text
     await delete_message(message)
 
     if not newsletter_text:
@@ -259,6 +312,18 @@ async def process_newsletter_text(message: Message, state: FSMContext):
         except Exception:
             pass
 
+    await state.update_data(
+        content_type="text",
+        text=newsletter_text
+    )
+
+    await send_newsletter(message, state)
+
+
+async def send_newsletter(message: Message, state: FSMContext):
+    data = await state.get_data()
+    content_type = data.get("content_type")
+
     all_chats = await ChatRepo.get_all_active_chats()
 
     if not all_chats:
@@ -268,6 +333,7 @@ async def process_newsletter_text(message: Message, state: FSMContext):
 
     progress_msg = await message.answer(
         f"📤 Начинаю рассылку...\n"
+        f"Тип: {content_type}\n"
         f"Всего чатов: {len(all_chats)}"
     )
 
@@ -277,12 +343,28 @@ async def process_newsletter_text(message: Message, state: FSMContext):
 
     for chat in all_chats:
         try:
-            await message.bot.send_message(
-                chat_id=chat['chat_id'],
-                text=newsletter_text,
-                parse_mode="HTML"
-            )
+            if content_type == "photo":
+                await message.bot.send_photo(
+                    chat_id=chat['chat_id'],
+                    photo=data['file_id'],
+                    caption=data['caption'],
+                    parse_mode="HTML"
+                )
+            # elif content_type == "document":
+            #     await message.bot.send_document(
+            #         chat_id=chat['chat_id'],
+            #         document=data['file_id'],
+            #         caption=data['caption'],
+            #         parse_mode="HTML"
+            #     )
+            else:
+                await message.bot.send_message(
+                    chat_id=chat['chat_id'],
+                    text=data['text'],
+                    parse_mode="HTML"
+                )
             success_count += 1
+            await asyncio.sleep(0.05)
         except Exception as e:
             failed_count += 1
             failed_chats.append({
@@ -296,8 +378,15 @@ async def process_newsletter_text(message: Message, state: FSMContext):
     except Exception:
         pass
 
+    content_emoji = {
+        "photo": "🖼",
+        "document": "📄",
+        "text": "📝"
+    }
+
     report = (
         f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"{content_emoji.get(content_type, '📢')} Тип: {content_type}\n"
         f"• Успешно: {success_count}\n"
         f"• Ошибки: {failed_count}\n"
         f"• Всего чатов: {len(all_chats)}"
@@ -313,6 +402,7 @@ async def process_newsletter_text(message: Message, state: FSMContext):
 
     await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
     await state.clear()
+
 
 @router.message(Command("gen"), IsAdminFilter())
 async def cmd_set_general(message: Message):

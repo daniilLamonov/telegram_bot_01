@@ -12,6 +12,7 @@ dependencies = [
     "aiosignal==1.4.0",
     "alembic==1.17.2",
     "annotated-types==0.7.0",
+    "apscheduler>=3.11.2",
     "asyncpg==0.31.0",
     "attrs==25.4.0",
     "black==25.12.0",

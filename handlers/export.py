@@ -13,6 +13,7 @@ from config import settings
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import CompareStates
+from utils.daily_report import generate_daily_report
 from utils.excel import export_to_excel, export_comparison_report
 from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, temp_msg
@@ -318,80 +319,5 @@ async def cmd_daily_report(message: Message):
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
 
-    now = datetime.now(moscow_tz).replace(tzinfo=None)
-    start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    all_balances = await BalanceRepo.get_all()
-
-    report_lines = []
-    total_checks = 0
-    total_amount = 0.0
-
-    for balance in all_balances:
-        balance_id = balance["id"]
-        contractor_name = balance["name"]
-
-        if contractor_name == "__default__":
-            continue
-
-        checks = await OperationRepo.get_checks_by_date(balance_id, start_date, now)
-
-        if not checks:
-            continue
-
-        count = len(checks)
-        amount = sum(float(check['amount']) for check in checks)
-
-        total_checks += count
-        total_amount += amount
-
-        if amount == int(amount):
-            formatted_amount = f'{int(amount):,}'.replace(',', ' ')
-        else:
-            formatted_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
-
-        if count % 10 == 1 and count % 100 != 11:
-            check_word = "чек"
-        elif 2 <= count % 10 <= 4 and (count % 100 < 10 or count % 100 >= 20):
-            check_word = "чека"
-        else:
-            check_word = "чеков"
-
-        report_lines.append(f"{contractor_name} - {count} {check_word} {formatted_amount}₽")
-
-    if not report_lines:
-        await message.answer(
-            f"📊 Отчёт за {now.strftime('%d.%m.%Y')}\n\n"
-            "Сегодня ещё не было чеков",
-            reply_markup=get_delete_keyboard()
-        )
-        return
-
-    if total_amount == int(total_amount):
-        formatted_total = f'{int(total_amount):,}'.replace(',', ' ')
-    else:
-        formatted_total = f'{total_amount:,.2f}'.replace(',', ' ').replace('.', ',')
-
-    if total_checks % 10 == 1 and total_checks % 100 != 11:
-        total_check_word = "чек"
-    elif 2 <= total_checks % 10 <= 4 and (total_checks % 100 < 10 or total_checks % 100 >= 20):
-        total_check_word = "чека"
-    else:
-        total_check_word = "чеков"
-
-    report_lines.sort(key=lambda x: float(x.split()[-1].replace(' ', '').replace('₽', '').replace(',', '.')),
-                      reverse=True)
-
-    report_text = (
-            f"📊 <b>Количество чеков + сумма {now.strftime('%d.%m.%Y')}:</b>\n\n"
-            + "\n".join(report_lines) +
-            f"\n\n<b>Общее количество чеков = {total_checks} {total_check_word}</b>\n"
-            f"<b>Общая сумма = {formatted_total}₽</b>"
-    )
-
-    await message.answer(
-        report_text,
-        parse_mode="HTML",
-        reply_markup=get_delete_keyboard()
-    )
+    await generate_daily_report(message.bot, message.chat.id)
 

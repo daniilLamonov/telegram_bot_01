@@ -229,13 +229,16 @@ async def receive_rate(message: Message, state: FSMContext, bot: Bot):
             f_amount_rub = format_amount(amount_rub)
             f_amount_usdt = format_amount(amount_usdt)
             chat_report = (
-                f"\n✅ Баланс <code>{contractor_name}</code>:\n"
-                f"Чеков за период: {len(operations)}\n"
-                f"Списано: {f_amount_rub} ₽\n"
-                f"Получено: {f_amount_usdt} USDT\n"
-                f"Комиссия: {commission_amount:.2f} USDT ({commission}%)\n"
-                f"К балансу: {amount_after_commission:.2f} USDT"
-                f"Период списания: {start_date} - {end_date}"
+                (
+                    f"\n✅ Баланс <code>{contractor_name}</code>:\n"
+                    f"Обмен за период: {start_date.date()} - {end_date.date()}\n"
+                    f"Курс: {rate}\n"
+                    f"Чеков за период: {len(operations)}\n"
+                    f"Списано: {f_amount_rub} ₽\n"
+                    f"Комиссия: {commission}%\n"
+                    f"Получено: {f_amount_usdt} USDT\n"
+                    f"Актуальный баланс: {amount_after_commission:.2f} USDT"
+                ).replace(".", ",")
             )
             report_lines.append(chat_report)
             for chat_id in chats:
@@ -257,13 +260,13 @@ async def receive_rate(message: Message, state: FSMContext, bot: Bot):
     f_total_usdt = format_amount(total_usdt)
 
     report_lines.append(
-        f"\n\n📊 <b>Итого:</b>\n"
+        (f"\n\n📊 <b>Итого:</b>\n"
         f"✅ Обработано чатов: {successful_chats}\n"
         f"💸 Всего списано: {f_total_rub} ₽\n"
         f"💵 Всего получено: {f_total_usdt} USDT\n"
         f"💰 Всего комиссия: {total_commission:.2f} USDT"
-    )
-    report = "\n".join(report_lines).replace(".", ",")
+    ).replace(".", ","))
+    report = "\n".join(report_lines)
 
     await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
 

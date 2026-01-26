@@ -1,4 +1,6 @@
 import asyncio
+from pytz import timezone
+
 from config import logger
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -9,6 +11,10 @@ from database.connection import init_db, close_db
 from handlers import router
 from middlewares.register_user import RegisterUserMiddleware
 from middlewares.timeout_middleware import StateTimeoutMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from utils.daily_report import generate_daily_report
 
 
 async def set_bot_commands(bot: Bot):
@@ -38,6 +44,16 @@ async def main():
     dp.callback_query.middleware(ChatInitMiddleware())
 
     dp.include_router(router)
+
+    scheduler = AsyncIOScheduler(timezone=timezone('Europe/Moscow'))
+
+    scheduler.add_job(
+        generate_daily_report,
+        trigger=CronTrigger(hour=14, minute=29, timezone='Europe/Moscow'),
+        kwargs={'bot': bot, 'chat_id': settings.REPORT_CHAT_ID}
+    )
+
+    scheduler.start()
 
     await set_bot_commands(bot)
     logger.info("Бот запущен")

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytz
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr, Field
 import logging
@@ -7,11 +8,15 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+moscow_tz = pytz.timezone('Europe/Moscow')
+
 class Settings(BaseSettings):
 
     BOT_TOKEN: SecretStr
 
     SUPER_ADMIN_ID: list[int]
+
+    REPORT_CHAT_ID: int
 
     BASE_DIR: Path = Path(__file__).resolve().parent
 

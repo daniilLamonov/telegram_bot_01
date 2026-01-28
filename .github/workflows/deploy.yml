@@ -20,6 +20,6 @@ jobs:
         script: |
           cd /home/botuser/projects/telegram-bot/
           git pull origin main
-          docker-compose down
-          docker-compose up -d --build
+          docker compose -f docker-compose.prod.yaml down
+          docker-compose -f docker-compose.prod.yaml up -d --build
           docker-compose logs --tail=30 tg_bot

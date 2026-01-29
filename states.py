@@ -1,5 +1,8 @@
 from aiogram.fsm.state import State, StatesGroup
 
+class RateState(StatesGroup):
+    waiting_rate = State()
+    waiting_date = State()
 
 class MassExchange(StatesGroup):
     waiting_rate = State()

@@ -10,10 +10,12 @@ def parse_date_period(
         return None, None, None
 
     if len(args) == 1:
-        start_date = datetime.strptime(args[0], "%d.%m.%Y")
-        end_date = start_date.replace(hour=23, minute=59, second=59)
-        return start_date, end_date, None
-
+        try:
+            start_date = datetime.strptime(args[0], "%d.%m.%Y")
+            end_date = start_date.replace(hour=23, minute=59, second=59)
+            return start_date, end_date, None
+        except ValueError:
+            return None, None, "❌ Неверный формат даты. Используй DD.MM.YYYY (например: 11.01.2026)"
     try:
         start_date = datetime.strptime(args[0], "%d.%m.%Y")
         end_date = datetime.strptime(args[1], "%d.%m.%Y")

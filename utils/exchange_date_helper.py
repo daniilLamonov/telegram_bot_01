@@ -35,21 +35,3 @@ def get_weekday_name_ru(weekday: int) -> str:
         6: "воскресенье"
     }
     return days.get(weekday, "неизвестный день")
-
-
-def explain_exchange_logic() -> str:
-    now = datetime.now(moscow_tz).date()
-    weekday = now.weekday()
-    today_name = get_weekday_name_ru(weekday)
-
-    start, end = get_exchange_date_for_today()
-    period_text = get_date_range_text(start, end)
-
-    if weekday == 0:
-        explanation = f"Сегодня {today_name}, обмениваются чеки за выходные: {period_text}"
-    elif weekday == 1:
-        explanation = f"Сегодня {today_name}, обмениваются чеки за понедельник: {period_text}"
-    else:
-        explanation = f"Сегодня {today_name}, обмениваются чеки за вчера: {period_text}"
-
-    return explanation

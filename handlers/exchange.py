@@ -4,7 +4,7 @@ import pytz
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings, logger
@@ -19,7 +19,6 @@ from utils.keyboards import get_delete_keyboard
 router = Router(name="exchange")
 
 moscow_tz = pytz.timezone('Europe/Moscow')
-
 
 
 @router.message(Command("ch"), IsAdminFilter())
@@ -56,9 +55,7 @@ async def cmd_ch(message: Message):
         username = message.from_user.username or message.from_user.first_name
 
         balance = await BalanceRepo.get_by_chat(chat_id)
-
         balance_id = balance["id"]
-
         balance_rub, balance_usdt = balance["balance_rub"], balance["balance_usdt"]
 
         if balance_rub < amount_rub:
@@ -67,14 +64,13 @@ async def cmd_ch(message: Message):
                 f"❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
             )
             return
-        
+
         amount_usdt = amount_rub / rate
         commission = float(balance["commission_percent"])
         amount_after_commission, commission_amount = await calculate_commission(
             balance_id, amount_usdt, user_id, username, commission
         )
 
-        # Используем атомарное списание с проверкой баланса
         success = await BalanceRepo.subtract_atomic(balance_id, amount_rub, 0.0)
         if not success:
             await temp_msg(
@@ -82,8 +78,7 @@ async def cmd_ch(message: Message):
                 f"❌ Недостаточно средств на балансе ₽\nБаланс чата: {balance_rub:.2f} ₽",
             )
             return
-        
-        # Пополняем USDT баланс
+
         await BalanceRepo.add(balance_id, 0.0, amount_after_commission)
 
         await OperationRepo.log_operation(
@@ -119,7 +114,6 @@ async def cmd_chall(message: Message, state: FSMContext, bot: Bot):
     await delete_message(message)
 
     text_parts = message.text.strip().split(maxsplit=1)
-    rate = None
 
     if len(text_parts) == 1:
         target_start_day, target_end_day = get_exchange_date_for_today()
@@ -130,15 +124,19 @@ async def cmd_chall(message: Message, state: FSMContext, bot: Bot):
         try:
             rate = await RateRepo.get_rate_by_date(target_end_day)
         except Exception as e:
-            logger.error(e)
+            logger.error(f"Ошибка получения курса: {e}")
+            rate = None
+
         if rate:
-            await exchange_all(message=message,
-                               start_date=start_date,
-                               end_date=end_date,
-                               is_auto_mode=True,
-                               rate=rate,
-                               target_date=(target_start_day, target_end_day),
-                               bot=bot)
+            await exchange_all(
+                message=message,
+                start_date=start_date,
+                end_date=end_date,
+                is_auto_mode=True,
+                rate=rate,
+                target_date=(target_start_day, target_end_day),
+                bot=bot
+            )
             return
         await state.set_state(MassExchange.waiting_rate)
 
@@ -150,8 +148,8 @@ async def cmd_chall(message: Message, state: FSMContext, bot: Bot):
             bot_message = await message.answer(
                 f"<b>Автоматический обмен чеков</b>\n\n"
                 f"Период обмена: <b>{one_date.strftime('%d.%m.%Y')}</b>\n\n"
-                f"Укажите курс за вчера"
-                f"Для других дат будут использованы курсы из таблицы.</i>\n\n",
+                f"Укажите курс за вчера\n"
+                f"<i>Для других дат будут использованы курсы из таблицы.</i>\n\n",
                 parse_mode="HTML",
                 reply_markup=builder.as_markup(),
             )
@@ -239,22 +237,28 @@ async def receive_rate(message: Message, state: FSMContext, bot: Bot):
             await bot.delete_message(message.chat.id, message_to_delete)
         except Exception as e:
             logger.error(f"Ошибка удаления сообщения: {e}")
-    await exchange_all(message=message,
-                       start_date=start_date,
-                       end_date=end_date,
-                       is_auto_mode=is_auto_mode,
-                       rate=rate,
-                       target_date=target_date,
-                       bot=bot)
+
+    await delete_message(message)
+
+    await exchange_all(
+        message=message,
+        start_date=start_date,
+        end_date=end_date,
+        is_auto_mode=is_auto_mode,
+        rate=rate,
+        target_date=target_date,
+        bot=bot
+    )
     await state.clear()
 
 
-async def exchange_all(message: Message, start_date: datetime, end_date: datetime, is_auto_mode: bool, rate: float, target_date: tuple | None, bot: Bot):
+async def exchange_all(message: Message, start_date: datetime, end_date: datetime, is_auto_mode: bool, rate: float,
+                       target_date: tuple[date, date] | None, bot: Bot):
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
     balances = await BalanceRepo.get_all()
 
-    report_lines = [f"<b>Массовый обмен</b>\n"]
+    report_lines = ["<b>Массовый обмен</b>\n"]
 
     total_rub = 0
     total_usdt = 0
@@ -290,8 +294,8 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
         operations = await OperationRepo.get_checks_by_date(balance_id, start_date, end_date)
 
         amount_rub = 0
-        operations_by_rate = {}  # Группируем операции по курсу для статистики
-        checks_without_rate = []  # Чеки, для которых нет курса
+        operations_by_rate = {}
+        checks_without_rate = []
 
         for operation in operations:
             op_id = operation["operation_id"]
@@ -302,7 +306,6 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
                 check_rate = all_rates.get(op_date)
 
                 if check_rate is None:
-                    # Если для даты чека нет курса в таблице
                     checks_without_rate.append({
                         'date': op_date,
                         'operation_id': op_id,
@@ -313,7 +316,6 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
                 op_amount = float(operation["amount"])
                 amount_rub += op_amount
 
-                # Группируем по курсу для детализации
                 if check_rate not in operations_by_rate:
                     operations_by_rate[check_rate] = {
                         'amount': 0,
@@ -324,7 +326,6 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
                 operations_by_rate[check_rate]['count'] += 1
                 operations_by_rate[check_rate]['dates'].add(op_date)
 
-                # Обновляем курс в операции
                 await OperationRepo.update_operation(
                     op_id,
                     exchange_rate=check_rate
@@ -388,10 +389,13 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
             rate_details.append(
                 f"  - Даты: {dates_str}"
             )
+            rate_details.append(f"    Даты: {dates_str}")
+
+        processed_checks = sum(d['count'] for d in operations_by_rate.values())
 
         chat_report = (
             f"\n✅ <code>{contractor_name}</code>:\n"
-            f"Чеков обработано: {len([o for o in operations if o['exchange_rate'] is None]) - len(checks_without_rate)}\n"
+            f"Чеков обработано: {processed_checks}\n"
             f"Списано: {f_amount_rub} ₽\n"
             f"Получено: {f_amount_usdt} USDT\n"
             f"Комиссия: {commission_amount:.2f} USDT ({commission}%)\n"
@@ -407,7 +411,6 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
 
         report_lines.append(chat_report)
 
-        # Отправка уведомлений в чаты
         for chat_id in chats:
             if chat_id in gen_chats:
                 try:
@@ -429,15 +432,14 @@ async def exchange_all(message: Message, start_date: datetime, end_date: datetim
 
     report_lines.append(
         (f"\n\n📊 <b>Итоговая статистика:</b>\n"
-        f"Обработано балансов: {successful_chats}\n"
-        f"Всего списано: {f_total_rub} ₽\n"
-        f"Всего получено: {f_total_usdt} USDT\n"
-        f"Всего комиссия: {total_commission:.2f} USDT\n"
-        f"Установленный курс: {rate}").replace(".", ",")
+         f"Обработано балансов: {successful_chats}\n"
+         f"Всего списано: {f_total_rub} ₽\n"
+         f"Всего получено: {f_total_usdt} USDT\n"
+         f"Всего комиссия: {total_commission:.2f} USDT\n"
+         f"Установленный курс: {rate}").replace(".", ",")
     )
 
     report = "\n".join(report_lines)
-
     await message.answer(report, parse_mode="HTML", reply_markup=get_delete_keyboard())
 
 
@@ -460,16 +462,17 @@ async def calculate_commission(balance_id, amount_usdt, user_id, username, commi
 @router.callback_query(F.data == "cancel_all")
 async def cancel_all_files(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-
     message_to_delete = data.get("initial_msg_id")
 
     if message_to_delete:
         try:
             await callback.bot.delete_message(callback.message.chat.id, message_to_delete)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Ошибка удаления сообщения: {e}")
 
     await state.clear()
+    await callback.answer("❌ Операция отменена")
+
 
 @router.message(Command("rate"), IsAdminFilter())
 async def set_rate(message: Message, state: FSMContext):
@@ -477,6 +480,7 @@ async def set_rate(message: Message, state: FSMContext):
         await temp_msg(message, "❌ У вас нет прав для этой команды")
         return
     await delete_message(message)
+
     start_date, _, err = parse_date_period(message.text, "/rate")
     if err:
         await temp_msg(message, err)
@@ -491,19 +495,18 @@ async def set_rate(message: Message, state: FSMContext):
     builder.button(text="❌ Отмена", callback_data="cancel_all")
 
     bot_message = await message.answer(
-        "Укажите курс на выбранную дату",
+        f"Укажите курс на <b>{start_date.strftime('%d.%m.%Y')}</b>",
+        parse_mode="HTML",
         reply_markup=builder.as_markup()
     )
     await state.update_data(
-        {
-            "initial_msg_id": bot_message.message_id,
-            "target_date": start_date,
-        }
+        initial_msg_id=bot_message.message_id,
+        target_date=start_date.date(),
     )
 
-@router.message(RateState.waiting_date, IsAdminFilter())
-async def waiting_rate(message: Message, state: FSMContext):
 
+@router.message(RateState.waiting_date, IsAdminFilter())
+async def waiting_rate(message: Message, state: FSMContext, bot: Bot):
     await delete_message(message)
 
     data = await state.get_data()
@@ -511,7 +514,10 @@ async def waiting_rate(message: Message, state: FSMContext):
     target_date = data.get("target_date")
 
     if message_to_delete:
-        await delete_message(message_to_delete)
+        try:
+            await bot.delete_message(message.chat.id, message_to_delete)
+        except Exception as e:
+            logger.error(f"Ошибка удаления сообщения: {e}")
 
     text = (message.text or "").strip().replace(",", ".")
     try:
@@ -526,7 +532,7 @@ async def waiting_rate(message: Message, state: FSMContext):
     if rate <= 0:
         await temp_msg(message, "❌ Курс должен быть больше нуля")
         return
+
     await RateRepo.set_rate(target_date, rate)
     await temp_msg(message, f"Установлен курс {rate} на {target_date.strftime('%d.%m.%Y')}")
     await state.clear()
-

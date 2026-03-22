@@ -470,3 +470,76 @@ async def export_comparison_report(
     buffer.seek(0)
 
     return buffer
+
+
+async def export_comparison_report_exl(only_in_file, only_in_db, matched_operations):
+    wb = Workbook()
+
+    # Удаляем дефолтный лист
+    wb.remove(wb['Sheet'])
+
+    # Лист 1: Совпавшие (зеленый) - ПЕРВЫЙ
+    if matched_operations:
+        ws_matched = wb.create_sheet("Совпавшие", 0)
+        ws_matched['A1'] = "Источник"
+        ws_matched['B1'] = "Сумма (₽)"
+        ws_matched['C1'] = "Дата/Время"
+        ws_matched['D1'] = "Номер заказа"
+
+        for i, op in enumerate(matched_operations, 2):
+            ws_matched[f'A{i}'] = "Совпало (файл+БД)"
+            ws_matched[f'B{i}'] = float(op['amount'])
+            ws_matched[f'C{i}'] = op['datetime'].strftime('%d.%m.%Y %H:%M:%S')
+            ws_matched[f'D{i}'] = op['transaction_id']
+
+            # Зеленый фон
+            green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
+            for col in ['A', 'B', 'C', 'D']:
+                cell = ws_matched[f'{col}{i}']
+                cell.fill = green_fill
+
+    # Лист 2: Только в файле (красный)
+    ws_file = wb.create_sheet("Только в файле")
+    ws_file['A1'] = "Источник"
+    ws_file['B1'] = "Сумма (₽)"
+    ws_file['C1'] = "Дата/Время"
+    ws_file['D1'] = "Номер заказа"
+
+    for i, op in enumerate(only_in_file, 2):
+        ws_file[f'A{i}'] = "Файл (нет в БД)"
+        ws_file[f'B{i}'] = float(op['amount'])
+        ws_file[f'C{i}'] = op['datetime'].strftime('%d.%m.%Y %H:%M:%S')
+        ws_file[f'D{i}'] = op['transaction_id']
+
+        # Красный фон
+        red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+        for col in ['A', 'B', 'C', 'D']:
+            cell = ws_file[f'{col}{i}']
+            cell.fill = red_fill
+
+    # Лист 3: Только в БД (желтый)
+    ws_db = wb.create_sheet("Только в БД")
+    ws_db['A1'] = "Источник"
+    ws_db['B1'] = "Сумма (₽)"
+
+    for i, op in enumerate(only_in_db, 2):
+        ws_db[f'A{i}'] = "БД (нет в файле)"
+        ws_db[f'B{i}'] = float(op['amount'])
+
+
+        # Желтый фон
+        yellow_fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
+        for col in ['A', 'B']:
+            cell = ws_db[f'{col}{i}']
+            cell.fill = yellow_fill
+
+    for ws in wb.worksheets:
+        ws.column_dimensions['A'].width = 25  # Источник
+        ws.column_dimensions['B'].width = 15  # Сумма
+        ws.column_dimensions['C'].width = 20  # Дата/Время
+        ws.column_dimensions['D'].width = 35  # Номер заказа / Контрагент
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer

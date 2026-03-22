@@ -15,6 +15,7 @@ class CheckStates(StatesGroup):
 
 class CompareStates(StatesGroup):
     waiting_for_file = State()
+    waiting_for_excel_file = State()
 
 class ReconciliationStates(StatesGroup):
     waiting_for_date = State()

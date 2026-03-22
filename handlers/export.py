@@ -1,6 +1,11 @@
+import asyncio
 import re
 from datetime import datetime, timedelta, timezone
+import pandas as pd
 from io import BytesIO
+
+from decimal import Decimal, InvalidOperation
+from collections import Counter
 
 import pytz
 from aiogram import Router
@@ -9,12 +14,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import settings
+from config import settings, logger
 from database.repositories import ChatRepo, OperationRepo, BalanceRepo
 from filters.admin import IsAdminFilter
 from states import CompareStates
 from utils.daily_report import generate_daily_report
-from utils.excel import export_to_excel, export_comparison_report
+from utils.excel import export_to_excel, export_comparison_report, export_comparison_report_exl
 from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -110,6 +115,250 @@ async def cmd_export_all(message: Message):
         await message.answer(f"❌ Ошибка при создании отчета: {e}")
 
 
+
+@router.message(Command("compare_exl"), IsAdminFilter())
+async def cmd_compare_excel(message: Message, state: FSMContext):
+    await delete_message(message)
+
+    if message.from_user.id not in SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав")
+        return
+
+    date_match = re.search(r'/compare_exl\s+(\d{2}\.\d{2}\.\d{4})', message.text)
+
+    if date_match:
+        try:
+            target_date = datetime.strptime(date_match.group(1), "%d.%m.%Y")
+        except ValueError:
+            await temp_msg(message, "❌ Формат даты: ДД.ММ.ГГГГ")
+            return
+    else:
+        target_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    start_date = target_date
+    end_date = start_date + timedelta(days=1)
+
+    await state.set_state(CompareStates.waiting_for_excel_file)
+
+    msg = await message.answer(
+        f"<b>Сравнение Excel c БД </b>\n"
+        f"Дата: {target_date.strftime('%d.%m.%Y')}\n\n"
+        "Пришлите Excel файл (.xlsx)",
+        parse_mode="HTML"
+    )
+
+    await state.update_data(
+        start_date=start_date,
+        end_date=end_date,
+        target_date=target_date,
+        initial_msg_id=msg.message_id,
+    )
+
+
+@router.message(CompareStates.waiting_for_excel_file)
+async def receive_excel_file(message: Message, state: FSMContext):
+    data = await state.get_data()
+    target_date = data["target_date"].date()
+    initial_msg_id = data["initial_msg_id"]
+
+    try:
+        await message.bot.delete_message(message.chat.id, initial_msg_id)
+    except:
+        pass
+
+    if not message.document or not message.document.file_name.lower().endswith((".xlsx", ".xls")):
+        err_message = await message.answer("Нужен Excel файл (.xlsx)")
+        await state.clear()
+        await asyncio.sleep(3)
+        await err_message.delete()
+        await delete_message(message)
+        return
+
+    processing_msg = await message.answer("Обрабатываю файл...")
+
+    try:
+        file = await message.bot.get_file(message.document.file_id)
+        buffer = BytesIO()
+        await message.bot.download_file(file.file_path, buffer)
+        await delete_message(message)
+
+        df = pd.read_excel(buffer)
+
+        if df.empty:
+            await processing_msg.edit_text("Пустой файл")
+            await state.clear()
+            return
+
+        df.columns = [str(col).strip().lower() for col in df.columns]
+
+        REQUIRED_COLUMNS = {
+            "date": ["дата и время регистрации заказа"],
+            "order_id": ["номер заказа"],
+            "status": ["статус заказа"],
+            "amount": ["сумма заказа"],
+        }
+
+        def find_column(names):
+            for col in df.columns:
+                if col in names:
+                    return col
+            return None
+
+        col_map = {k: find_column(v) for k, v in REQUIRED_COLUMNS.items()}
+
+        if not all(col_map.values()):
+            await processing_msg.edit_text("Не найдены нужные колонки")
+            await state.clear()
+            return
+
+        def parse_amount(val):
+            try:
+                val = str(val).replace(" ", "").replace(",", ".").replace("₽", "")
+                return Decimal(val)
+            except (InvalidOperation, ValueError):
+                return None
+
+        file_operations = []
+        seen = set()
+
+        for i, row in df.iterrows():
+            try:
+                if "дата и время" in str(row[col_map["date"]]).lower():
+                    continue
+
+                status = str(row[col_map["status"]]).strip().casefold()
+                if status != "captured":
+                    continue
+
+                date_val = pd.to_datetime(row[col_map["date"]], errors="coerce")
+                if pd.isna(date_val) or date_val.date() != target_date:
+                    continue
+
+                amount = parse_amount(row[col_map["amount"]])
+                if not amount or amount <= 0:
+                    continue
+
+                order_id = str(row[col_map["order_id"]]).strip()
+
+                key = (order_id, amount)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                file_operations.append({
+                    "transaction_id": order_id,
+                    "amount": amount,
+                    "datetime": date_val
+                })
+
+            except Exception as e:
+                logger.warning(f"Row {i} skipped: {e}")
+                continue
+
+        if not file_operations:
+            await processing_msg.edit_text("Нет успешных операций за эту дату")
+            await state.clear()
+            return
+
+        db_operations_raw = await OperationRepo.get_all_checks_by_date(
+            data["start_date"],
+            data["end_date"]
+        )
+
+        file_amounts = Counter([op['amount'] for op in file_operations])
+        db_amounts = Counter([Decimal(str(op['amount'])) for op in db_operations_raw])
+
+        only_in_file = []
+        only_in_db = []
+        matched_operations = []
+
+        # Только в файле (красный)
+        for amount, file_count in file_amounts.items():
+            db_count = db_amounts.get(amount, 0)
+            if file_count > db_count:
+                diff = file_count - db_count
+                matching_ops = [op for op in file_operations if op['amount'] == amount]
+                only_in_file.extend(matching_ops[:diff])
+
+        # Только в БД (желтый)
+        for amount, db_count in db_amounts.items():
+            file_count = file_amounts.get(amount, 0)
+            if db_count > file_count:
+                diff = db_count - file_count
+                matching_ops = [
+                    op for op in db_operations_raw
+                    if Decimal(str(op['amount'])) == amount
+                ]
+                only_in_db.extend(matching_ops[:diff])
+
+        # СОВПАВШИЕ (зеленый)
+        for amount, file_count in file_amounts.items():
+            db_count = db_amounts.get(amount, 0)
+            match_count = min(file_count, db_count)
+            matching_file_ops = [op for op in file_operations if op['amount'] == amount][:match_count]
+            matched_operations.extend(matching_file_ops)
+
+        if not only_in_file and not only_in_db:
+            total_file = sum(op['amount'] for op in file_operations)
+            total_db = sum(Decimal(str(op['amount'])) for op in db_operations_raw)
+
+            await processing_msg.edit_text(
+                f"Все успешные операции совпали!\n\n"
+                f"Excel: {len(file_operations)}\n"
+                f"БД: {len(db_operations_raw)}\n"
+                f"Сумма Excel: {total_file:,.2f}\n"
+                f"Сумма БД: {total_db:,.2f}",
+                parse_mode="HTML",
+                reply_markup=get_delete_keyboard()
+            )
+            await state.clear()
+            return
+
+        await processing_msg.edit_text("Найдены расхождения, формирую отчет...")
+
+        total_file = sum(op['amount'] for op in file_operations)
+        total_db = sum(Decimal(str(op['amount'])) for op in db_operations_raw)
+        total_file_count = sum(file_amounts.values())
+
+        matched_count = sum(min(file_amounts[a], db_amounts.get(a, 0)) for a in file_amounts)
+        not_matched_count = total_file_count - matched_count
+        matched_amount = sum(a * min(file_amounts[a], db_amounts.get(a, 0)) for a in file_amounts)
+
+        buffer = await export_comparison_report_exl(
+            only_in_file=only_in_file,
+            only_in_db=only_in_db,
+            matched_operations=matched_operations
+        )
+
+        await message.answer_document(
+            BufferedInputFile(
+                buffer.read(),
+                filename=f"compare_excel_{data['target_date'].strftime('%Y%m%d')}.xlsx"
+            ),
+            caption=(
+                f"РАСХОЖДЕНИЯ\n\n"
+                f"🔴Красным: есть в файле, нет в БД: {len(only_in_file)} шт.\n"
+                f"🟡Желтым: есть в БД, нет в файле: {len(only_in_db)} шт.\n\n"
+                f"Дата: {data['target_date'].strftime('%d.%m.%Y')}\n\n"
+                f"Общая сумма схождений: {matched_amount:,.2f} ₽\n"
+                f"Кол-во чеков сошлось: {matched_count}\n"
+                f"Кол-во чеков НЕ сошлось (из файла): {not_matched_count}\n\n"
+                f"Общая сумма файла: {total_file:,.2f} ₽\n"
+                f"Общая сумма БД: {total_db:,.2f} ₽"
+            ),
+            parse_mode="HTML",
+            reply_markup=get_delete_keyboard()
+        )
+
+        await processing_msg.delete()
+        await state.clear()
+
+    except Exception as e:
+        logger.exception("Compare excel failed")
+        await processing_msg.edit_text(f"Ошибка: {e}")
+        await state.clear()
+
+
 @router.message(Command("compare"), IsAdminFilter())
 async def cmd_compare(message: Message, state: FSMContext):
     await delete_message(message)
@@ -165,10 +414,12 @@ async def receive_file(message: Message, state: FSMContext):
     end_date = data["end_date"]
     target_date = data["target_date"]
     initial_msg_id = data["initial_msg_id"]
-    await delete_message(initial_msg_id)
-
+    try:
+        await message.bot.delete_message(message.chat.id, initial_msg_id)
+    except:
+        pass
     processing_msg = await message.answer(
-        f"⏳ Обрабатываю файл...\n"
+        f"Обрабатываю файл...\n"
     )
 
     try:
@@ -261,8 +512,8 @@ async def receive_file(message: Message, state: FSMContext):
             total_db = sum(float(op['amount']) for op in db_operations_raw)
 
             await processing_msg.edit_text(
-                f"✅ <b>Все операции совпали!</b>\n\n"
-                f"📊 Статистика:\n"
+                f"<b>Все операции совпали!</b>\n\n"
+                f"Статистика:\n"
                 f"• В файле: {len(file_operations)} операций\n"
                 f"• В базе: {len(db_operations_raw)} операций\n"
                 f"• Общая сумма (файл): {total_file:,.2f} ₽\n"

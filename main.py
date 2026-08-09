@@ -51,15 +51,6 @@ async def main():
         kwargs={'bot': bot, 'chat_id': settings.REPORT_CHAT_ID}
     )
 
-    async def print_hello(bot: Bot, chat_id: int):
-        await bot.send_message(chat_id=chat_id, text='Hello from bot')
-
-    scheduler.add_job(
-        print_hello,
-        trigger=CronTrigger(hour=23, minute=27, timezone='Europe/Moscow'),
-        kwargs={'bot': bot, 'chat_id': settings.REPORT_CHAT_ID}
-    )
-
     scheduler.start()
 
     await set_bot_commands(bot)

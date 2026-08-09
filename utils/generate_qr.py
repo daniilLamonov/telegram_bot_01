@@ -55,7 +55,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
         except (TimeoutException, WebDriverException) as e:
             raise SiteUnavailableError(
-                "Сайт недоступен"
+                f"Сайт недоступен: {type(e).__name__}: {e}"
             ) from e
 
         # 3. Открываем рабочую страницу

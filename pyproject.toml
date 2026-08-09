@@ -59,6 +59,7 @@ dependencies = [
     "typing-extensions==4.15.0",
     "typing-inspection==0.4.2",
     "tzdata==2025.2",
+    "undetected-chromedriver>=3.5.5",
     "wrapt==2.0.1",
     "yarl==1.22.0",
 ]

@@ -59,9 +59,9 @@ async def cmd_new(message: Message):
             amount,
         )
 
-    except SiteUnavailableError as e:
+    except SiteUnavailableError:
         await processing_msg.edit_text(
-        f"❌ {e}",
+            "❌ Сайт агента недоступен",
             reply_markup=get_delete_keyboard(),
         )
         return

@@ -1,5 +1,6 @@
 import asyncio
 from pytz import timezone
+import logging
 
 from config import logger
 from aiogram import Bot, Dispatcher
@@ -29,6 +30,16 @@ async def set_bot_commands(bot: Bot):
 
 async def main():
     await init_db()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format=(
+            "%(asctime)s | "
+            "%(levelname)s | "
+            "%(name)s | "
+            "%(message)s"
+        ),
+    )
 
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value())
     storage = MemoryStorage()

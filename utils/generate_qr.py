@@ -17,20 +17,30 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+# ============================================================
+# Исключения
+# ============================================================
+
+
 class QRGeneratorError(Exception):
-    pass
+    """Базовая ошибка генерации QR."""
 
 
 class SiteUnavailableError(QRGeneratorError):
-    pass
+    """Сайт агента недоступен."""
 
 
 class AuthenticationError(QRGeneratorError):
-    pass
+    """Не удалось авторизоваться."""
 
 
 class QRGenerationError(QRGeneratorError):
-    pass
+    """Ошибка генерации QR."""
+
+
+# ============================================================
+# Генерация QR
+# ============================================================
 
 
 def generate_qr(value: float) -> tuple[bytes, str]:
@@ -43,18 +53,32 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
     try:
         # --------------------------------------------------
-        # 1. Запускаем браузер
+        # 1. Запуск Chrome
         # --------------------------------------------------
 
         logger.info("Запуск Chrome")
 
         try:
+            options = uc.ChromeOptions()
+
+            # Не ждём загрузки абсолютно всех ресурсов страницы.
+            options.page_load_strategy = "eager"
+
+            # Настройки для Docker / сервера.
+            options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+
             driver = uc.Chrome(
-                headless=True,
+                options=options,
+                browser_executable_path="/usr/bin/google-chrome",
                 use_subprocess=True,
             )
 
-            driver.set_page_load_timeout(20)
+            # Максимальное время driver.get()
+            driver.set_page_load_timeout(60)
 
         except Exception as e:
             raise SiteUnavailableError(
@@ -63,13 +87,15 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
         logger.info("Chrome успешно запущен")
 
+        # Ожидание элементов страницы.
         wait = WebDriverWait(driver, 20)
 
         # --------------------------------------------------
-        # 2. Открываем сайт с авторизацией
+        # 2. Открываем URL с Basic Auth
         # --------------------------------------------------
 
-        # AUTH_URL не выводим, потому что там логин/пароль
+        # AUTH_URL в лог не выводим:
+        # там находятся логин и пароль.
         logger.info(
             "Открытие страницы авторизации агента"
         )
@@ -77,19 +103,28 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         try:
             driver.get(settings.AUTH_URL)
 
-        except TimeoutException as e:
-            raise SiteUnavailableError(
-                "Сайт недоступен"
-            ) from e
+        except TimeoutException:
+            # Chrome иногда считает страницу ещё загружающейся,
+            # хотя DOM уже доступен.
+            logger.warning(
+                "Timeout при загрузке AUTH_URL. "
+                "Пробуем продолжить работу."
+            )
 
         except WebDriverException as e:
             raise SiteUnavailableError(
-                "Сайт недоступен"
+                "Сайт агента недоступен"
             ) from e
 
-        logger.info(
-            "Страница авторизации открыта"
-        )
+        try:
+            logger.info(
+                "AUTH_URL обработан. current_url=%s",
+                driver.current_url,
+            )
+        except Exception:
+            logger.warning(
+                "Не удалось получить current_url после AUTH_URL"
+            )
 
         # --------------------------------------------------
         # 3. Открываем рабочую страницу
@@ -102,41 +137,65 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         try:
             driver.get(settings.PAGE_URL)
 
-        except TimeoutException as e:
-            raise SiteUnavailableError(
-                "Не удалось открыть страницу агента"
-            ) from e
+        except TimeoutException:
+            logger.warning(
+                "Timeout при загрузке PAGE_URL. "
+                "Пробуем продолжить работу."
+            )
 
         except WebDriverException as e:
             raise SiteUnavailableError(
                 "Не удалось открыть страницу агента"
             ) from e
 
-        logger.info(
-            "Рабочая страница агента открыта"
-        )
+        try:
+            logger.info(
+                "PAGE_URL обработан. current_url=%s",
+                driver.current_url,
+            )
+        except Exception:
+            logger.warning(
+                "Не удалось получить current_url после PAGE_URL"
+            )
 
         # --------------------------------------------------
         # 4. Проверяем авторизацию
         # --------------------------------------------------
 
         logger.info(
-            "Проверка авторизации"
+            "Проверка авторизации. Ожидание qr_amount"
         )
 
         try:
             amount_input = wait.until(
                 EC.presence_of_element_located(
                     (
-                        By.XPATH,
-                        '//*[@id="qr_amount"]',
+                        By.ID,
+                        "qr_amount",
                     )
                 )
             )
 
         except TimeoutException as e:
+            try:
+                logger.error(
+                    "Поле qr_amount не найдено. "
+                    "current_url=%s title=%s",
+                    driver.current_url,
+                    driver.title,
+                )
+            except Exception:
+                logger.error(
+                    "Поле qr_amount не найдено"
+                )
+
             raise AuthenticationError(
                 "Не удалось авторизоваться у агента"
+            ) from e
+
+        except WebDriverException as e:
+            raise AuthenticationError(
+                "Не удалось проверить авторизацию у агента"
             ) from e
 
         logger.info(
@@ -144,11 +203,11 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         )
 
         # --------------------------------------------------
-        # 5. Вводим сумму
+        # 5. Ввод суммы
         # --------------------------------------------------
 
         logger.info(
-            "Ввод суммы: %s",
+            "Ввод суммы. amount=%s",
             value,
         )
 
@@ -166,21 +225,25 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         )
 
         # --------------------------------------------------
-        # 6. Нажимаем кнопку
+        # 6. Нажимаем кнопку создания QR
         # --------------------------------------------------
 
         logger.info(
-            "Поиск кнопки создания QR"
+            "Ожидание кнопки qrSubmit"
         )
 
         try:
             create_btn = wait.until(
                 EC.element_to_be_clickable(
                     (
-                        By.XPATH,
-                        '//*[@id="qrSubmit"]',
+                        By.ID,
+                        "qrSubmit",
                     )
                 )
+            )
+
+            logger.info(
+                "Кнопка qrSubmit найдена"
             )
 
             create_btn.click()
@@ -200,7 +263,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         )
 
         # --------------------------------------------------
-        # 7. Ждём появления QR
+        # 7. Ожидаем готовый QR
         # --------------------------------------------------
 
         logger.info(
@@ -211,8 +274,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             wait.until(
                 lambda d: (
                     d.find_element(
-                        By.XPATH,
-                        '//*[@id="qrImage"]',
+                        By.ID,
+                        "qrImage",
                     ).get_attribute("src") or ""
                 ).startswith("data:image/")
             )
@@ -222,12 +285,17 @@ def generate_qr(value: float) -> tuple[bytes, str]:
                 "Агент не сгенерировал QR"
             ) from e
 
+        except WebDriverException as e:
+            raise QRGenerationError(
+                "Агент не сгенерировал QR"
+            ) from e
+
         logger.info(
             "QR успешно сгенерирован"
         )
 
         # --------------------------------------------------
-        # 8. Получаем картинку
+        # 8. Получаем изображение QR
         # --------------------------------------------------
 
         logger.info(
@@ -236,8 +304,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
         try:
             qr_image = driver.find_element(
-                By.XPATH,
-                '//*[@id="qrImage"]',
+                By.ID,
+                "qrImage",
             )
 
             src = qr_image.get_attribute("src")
@@ -247,16 +315,30 @@ def generate_qr(value: float) -> tuple[bytes, str]:
                 "Не удалось получить изображение QR"
             ) from e
 
-        if not src or "," not in src:
+        if not src:
             raise QRGenerationError(
                 "Агент не сгенерировал QR"
             )
 
+        if not src.startswith("data:image/"):
+            raise QRGenerationError(
+                "Агент вернул некорректное изображение QR"
+            )
+
+        if "," not in src:
+            raise QRGenerationError(
+                "Агент вернул некорректное изображение QR"
+            )
+
+        # --------------------------------------------------
+        # 9. Base64 -> bytes
+        # --------------------------------------------------
+
         try:
-            base64_data = src.split(",", 1)[1]
+            _, base64_data = src.split(",", 1)
 
             image_data = base64.b64decode(
-                base64_data
+                base64_data,
             )
 
         except Exception as e:
@@ -264,25 +346,30 @@ def generate_qr(value: float) -> tuple[bytes, str]:
                 "Не удалось получить изображение QR"
             ) from e
 
+        if not image_data:
+            raise QRGenerationError(
+                "Изображение QR пустое"
+            )
+
         logger.info(
             "Изображение QR получено. size=%s bytes",
             len(image_data),
         )
 
         # --------------------------------------------------
-        # 9. Получаем data
+        # 10. Получаем данные для подписи
         # --------------------------------------------------
 
         logger.info(
-            "Получение данных QR"
+            "Получение qrUrlField"
         )
 
         try:
             data_field = wait.until(
                 EC.presence_of_element_located(
                     (
-                        By.XPATH,
-                        '//*[@id="qrUrlField"]',
+                        By.ID,
+                        "qrUrlField",
                     )
                 )
             )
@@ -312,27 +399,26 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
         return image_data, data
 
-    # ------------------------------------------------------
-    # Наши ожидаемые ошибки
-    # ------------------------------------------------------
+    # ========================================================
+    # Наши контролируемые ошибки
+    # ========================================================
 
     except QRGeneratorError:
-        # logger.exception выводит:
-        # - сообщение
-        # - тип исключения
+        # В консоль попадёт:
         # - полный traceback
-        # - исходную ошибку из "raise ... from e"
+        # - исходная Selenium ошибка
+        # - наша итоговая ошибка
         logger.exception(
             "Ошибка при генерации QR. amount=%s",
             value,
         )
 
-        # Отдаём эту же ошибку обратно хендлеру бота
+        # Отдаём ошибку дальше Telegram handler'у.
         raise
 
-    # ------------------------------------------------------
-    # Любая неожиданная ошибка
-    # ------------------------------------------------------
+    # ========================================================
+    # Любая неизвестная ошибка
+    # ========================================================
 
     except Exception as e:
         logger.exception(
@@ -343,6 +429,10 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         raise QRGenerationError(
             "Произошла ошибка при генерации QR"
         ) from e
+
+    # ========================================================
+    # Всегда закрываем Chrome
+    # ========================================================
 
     finally:
         if driver:

@@ -170,8 +170,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             amount_input = wait.until(
                 EC.presence_of_element_located(
                     (
-                        By.ID,
-                        "qr_amount",
+                        By.XPATH,
+                        '//*[@id="qr_amount"]'
                     )
                 )
             )
@@ -236,8 +236,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             create_btn = wait.until(
                 EC.element_to_be_clickable(
                     (
-                        By.ID,
-                        "qrSubmit",
+                        By.XPATH,
+                        '//*[@id="qrSubmit"]'
                     )
                 )
             )
@@ -274,9 +274,10 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             wait.until(
                 lambda d: (
                     d.find_element(
-                        By.ID,
-                        "qrImage",
-                    ).get_attribute("src") or ""
+                        By.XPATH,
+                        '//*[@id="qrImage"]'
+                    )
+                    .get_attribute("src") or ""
                 ).startswith("data:image/")
             )
 
@@ -304,8 +305,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
         try:
             qr_image = driver.find_element(
-                By.ID,
-                "qrImage",
+                By.XPATH,
+                '//*[@id="qrImage"]'
             )
 
             src = qr_image.get_attribute("src")
@@ -368,8 +369,8 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             data_field = wait.until(
                 EC.presence_of_element_located(
                     (
-                        By.ID,
-                        "qrUrlField",
+                        By.XPATH,
+                        '//*[ @ id = "qrUrlField"]'
                     )
                 )
             )

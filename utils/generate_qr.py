@@ -1,37 +1,164 @@
+import base64
+
 import undetected_chromedriver as uc
+
+from selenium.common.exceptions import (
+    TimeoutException,
+    WebDriverException,
+)
 from selenium.webdriver.common.by import By
-from time import sleep
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from config import settings
 
 
-
-def generate_qr(value):
-
-    driver = uc.Chrome(version_main=149, headless=True, use_subprocess=False)
-
-    driver.get(
-        "https://2:awfwaf21fwqf21g123g13g1@api-platejka.ru/api/lk/2"
-    )
-    sleep(2)
-    driver.get('https://api-platejka.ru/api/lk/2')
-
-    sleep(2)
-
-    driver.find_element(
-        By.XPATH,
-        '//*[@id="qr_amount"]'
-    ).send_keys(value)
-    create_btn = driver.find_element(
-        By.XPATH,
-        '//*[@id="qrSubmit"]'
-    )
-    create_btn.click()
-    sleep(2)
+class QRGeneratorError(Exception):
+    pass
 
 
-    #
-    qr = driver.save_screenshot('3.png')
-    data = driver.find_element_by_xpath('//*[@id="qr_amount"]').text
-    #
+class SiteUnavailableError(QRGeneratorError):
+    pass
 
 
-    return qr, data
+class AuthenticationError(QRGeneratorError):
+    pass
+
+
+class QRGenerationError(QRGeneratorError):
+    pass
+
+
+def generate_qr(value: float) -> tuple[bytes, str]:
+    driver = None
+
+    try:
+        # 1. Запускаем браузер
+        try:
+            driver = uc.Chrome(
+                headless=True,
+                use_subprocess=True,
+            )
+
+            driver.set_page_load_timeout(20)
+
+        except Exception as e:
+            raise SiteUnavailableError(
+                "Не удалось запустить браузер"
+            ) from e
+
+        wait = WebDriverWait(driver, 20)
+
+        # 2. Открываем сайт с авторизацией
+        try:
+            driver.get(settings.AUTH_URL)
+
+        except (TimeoutException, WebDriverException) as e:
+            raise SiteUnavailableError(
+                "Сайт недоступен"
+            ) from e
+
+        # 3. Открываем рабочую страницу
+        try:
+            driver.get(settings.PAGE_URL)
+
+        except (TimeoutException, WebDriverException) as e:
+            raise SiteUnavailableError(
+                "Не удалось открыть страницу агента"
+            ) from e
+
+        # 4. Проверяем авторизацию
+        try:
+            amount_input = wait.until(
+                EC.presence_of_element_located(
+                    (By.XPATH, '//*[@id="qr_amount"]')
+                )
+            )
+
+        except TimeoutException as e:
+            raise AuthenticationError(
+                "Не удалось авторизоваться у агента"
+            ) from e
+
+        # 5. Вводим сумму
+        amount_input.clear()
+        amount_input.send_keys(str(value))
+
+        # 6. Нажимаем создать
+        try:
+            create_btn = wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, '//*[@id="qrSubmit"]')
+                )
+            )
+
+            create_btn.click()
+
+        except TimeoutException as e:
+            raise QRGenerationError(
+                "Не удалось нажать кнопку создания QR"
+            ) from e
+
+        # 7. Ждём появления готового QR
+        try:
+            wait.until(
+                lambda d: (
+                    d.find_element(By.XPATH,'//*[@id="qrImage"]')
+                    .get_attribute("src") or ""
+                ).startswith("data:image/")
+            )
+
+        except TimeoutException as e:
+            raise QRGenerationError(
+                "Агент не сгенерировал QR"
+            ) from e
+
+        # 8. Получаем картинку
+        qr_image = driver.find_element(
+            By.XPATH,'//*[@id="qrImage"]',
+        )
+
+        src = qr_image.get_attribute("src")
+
+        if not src or "," not in src:
+            raise QRGenerationError(
+                "Агент не сгенерировал QR"
+            )
+
+        try:
+            base64_data = src.split(",", 1)[1]
+            image_data = base64.b64decode(base64_data)
+
+        except Exception as e:
+            raise QRGenerationError(
+                "Не удалось получить изображение QR"
+            ) from e
+
+        # 9. Получаем данные для подписи
+        try:
+            data_field = wait.until(
+                EC.presence_of_element_located(
+                    (By.XPATH, '//*[ @ id = "qrUrlField"]')
+                )
+            )
+
+            data = data_field.get_attribute("value")
+
+        except TimeoutException as e:
+            raise QRGenerationError(
+                "QR создан, но данные не получены"
+            ) from e
+
+        if not data:
+            raise QRGenerationError(
+                "QR создан, но данные пустые"
+            )
+
+        return image_data, data
+
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass

@@ -54,6 +54,7 @@ dependencies = [
     "pytokens==0.3.0",
     "pytz==2025.2",
     "ruff==0.14.8",
+    "setuptools>=84.0.0",
     "six==1.17.0",
     "sqlalchemy==2.0.45",
     "typing-extensions==4.15.0",

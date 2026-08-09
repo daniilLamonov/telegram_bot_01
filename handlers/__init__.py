@@ -7,6 +7,7 @@ from .exchange import router as exchange_router
 from .export import router as export_router
 from .help import router as help_router
 from .payments import router as payments_router
+from .qr import router as qr_router
 from .history import router as history_router
 from aiogram import Router
 
@@ -22,3 +23,4 @@ router.include_router(exchange_router)
 router.include_router(help_router)
 router.include_router(history_router)
 router.include_router(admin_router)
+router.include_router(qr_router)

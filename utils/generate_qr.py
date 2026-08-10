@@ -1,5 +1,6 @@
 import base64
 import logging
+import time
 
 import undetected_chromedriver as uc
 
@@ -53,6 +54,9 @@ def generate_qr(value: float) -> tuple[bytes, str]:
 
     try:
         # 1. Запуск Chrome
+
+        logger.info("Запуск Chrome")
+
         try:
             options = uc.ChromeOptions()
 
@@ -75,6 +79,10 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             driver.set_page_load_timeout(60)
 
         except Exception as e:
+            logger.exception(
+                "Не удалось запустить Chrome"
+            )
+
             raise SiteUnavailableError(
                 "Не удалось запустить браузер"
             ) from e
@@ -90,91 +98,96 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "Открытие страницы авторизации агента"
         )
 
+        start_time = time.perf_counter()
+
         try:
             driver.get(settings.AUTH_URL)
 
         except TimeoutException:
+            elapsed = time.perf_counter() - start_time
+
             logger.warning(
-                "Timeout при загрузке AUTH_URL. "
-                "Пробуем продолжить работу."
+                "Timeout при загрузке AUTH_URL "
+                "через %.2f сек. "
+                "Продолжаем работу.",
+                elapsed,
             )
 
         except WebDriverException as e:
+            logger.exception(
+                "Ошибка при открытии AUTH_URL"
+            )
+
             raise SiteUnavailableError(
                 "Сайт агента недоступен"
             ) from e
 
-        try:
-            logger.info(
-                "AUTH_URL обработан.",
-            )
-        except Exception:
-            logger.warning(
-                "Не удалось получить current_url после AUTH_URL"
-            )
+        elapsed = time.perf_counter() - start_time
 
-        # 3. Открываем рабочую страницу
+        logger.info(
+            "AUTH_URL обработан за %.2f сек.",
+            elapsed,
+        )
+
+        logger.info(
+            "После AUTH_URL current_url=%s",
+            driver.current_url,
+        )
+
+        # 3. Даём браузеру немного времени завершить Auth
+
+        logger.info(
+            "Ожидание завершения авторизации"
+        )
+
+        time.sleep(2)
+
+        # 4. Переходим на обычную страницу
+
+        logger.info(
+            "Открытие рабочей страницы агента"
+        )
+
+        start_time = time.perf_counter()
+
         try:
             driver.get(settings.PAGE_URL)
 
         except TimeoutException:
+            elapsed = time.perf_counter() - start_time
+
             logger.warning(
-                "Timeout при загрузке PAGE_URL. "
-                "Пробуем продолжить работу."
+                "Timeout при загрузке PAGE_URL "
+                "через %.2f сек. "
+                "Проверяем, успела ли загрузиться страница.",
+                elapsed,
             )
 
         except WebDriverException as e:
+            logger.exception(
+                "Ошибка при открытии PAGE_URL"
+            )
+
             raise SiteUnavailableError(
                 "Не удалось открыть страницу агента"
             ) from e
 
-        try:
-            logger.info(
-                "PAGE_URL обработан. current_url=%s",
-                driver.current_url,
-            )
-        except Exception:
-            logger.warning(
-                "Не удалось получить current_url после PAGE_URL"
-            )
+        elapsed = time.perf_counter() - start_time
 
-        # # 4. Проверяем авторизацию
-        # try:
-        #     amount_input = wait.until(
-        #         EC.presence_of_element_located(
-        #             (
-        #                 By.XPATH,
-        #                 '//*[@id="qr_amount"]'
-        #             )
-        #         )
-        #     )
-        #
-        # except TimeoutException as e:
-        #     try:
-        #         logger.error(
-        #             "Поле qr_amount не найдено. "
-        #             "current_url=%s title=%s",
-        #             driver.current_url,
-        #             driver.title,
-        #         )
-        #     except Exception:
-        #         logger.error(
-        #             "Поле qr_amount не найдено"
-        #         )
-        #
-        #     raise AuthenticationError(
-        #         "Не удалось авторизоваться у агента"
-        #     ) from e
-        #
-        # except WebDriverException as e:
-        #     raise AuthenticationError(
-        #         "Не удалось проверить авторизацию у агента"
-        #     ) from e
-        #
-        # logger.info(
-        #     "Авторизация успешна"
-        # )
+        logger.info(
+            "PAGE_URL обработан за %.2f сек.",
+            elapsed,
+        )
 
+        logger.info(
+            "current_url=%s",
+            driver.current_url,
+        )
+
+        logger.info(
+            "title=%s",
+            driver.title,
+        )
         # 4. Ввод суммы
         try:
             amount_input = wait.until(

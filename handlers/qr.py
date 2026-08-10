@@ -36,7 +36,7 @@ async def cmd_new(message: Message):
         return
 
     try:
-        amount = float(args[0].replace(",", "."))
+        amount = int(args[0].replace(",", "."))
 
         if amount <= 0:
             raise ValueError

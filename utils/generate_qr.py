@@ -61,17 +61,17 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             options = uc.ChromeOptions()
 
             # Не ждём загрузки абсолютно всех ресурсов страницы.
-            options.page_load_strategy = "eager"
+            options = uc.ChromeOptions()
 
-            # # Настройки для Docker / сервера.
-            # options.add_argument("--headless=new")
-            # options.add_argument("--no-sandbox")
-            # options.add_argument("--disable-dev-shm-usage")
-            # options.add_argument("--disable-gpu")
-            # options.add_argument("--window-size=1920,1080")
+            options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-software-rasterizer")
+            options.add_argument("--window-size=1920,1080")
 
             driver = uc.Chrome(
-                headless=True,
+                options=options,
                 use_subprocess=True,
             )
 

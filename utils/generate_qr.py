@@ -18,11 +18,6 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-# ============================================================
-# Исключения
-# ============================================================
-
-
 class QRGeneratorError(Exception):
     """Базовая ошибка генерации QR."""
 
@@ -59,16 +54,15 @@ def generate_qr(value: float, tab_index: int = 2) -> tuple[bytes, str]:
         try:
             options = uc.ChromeOptions()
 
-            # options.add_argument("--headless=new")
-            # options.add_argument("--no-sandbox")
-            # options.add_argument("--disable-dev-shm-usage")
-            # options.add_argument("--disable-gpu")
-            # options.add_argument("--disable-software-rasterizer")
-            # options.add_argument("--window-size=1920,1080")
+            options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-software-rasterizer")
+            options.add_argument("--window-size=1920,1080")
 
             driver = uc.Chrome(
                 options=options,
-                headless=False,
                 use_subprocess=True,
             )
 

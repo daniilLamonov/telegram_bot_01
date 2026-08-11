@@ -12,6 +12,9 @@
 ### 1. Клонирование/Получение проекта
 
 Распакуйте архив проекта на сервере.
+```
+git clone http://...
+```
 
 ### 2. Настройка переменных окружения
 
@@ -57,14 +60,13 @@ docker-compose logs -f tg_bot
 docker-compose down
 ```
 
-
-
 Перезапустить бота:
 ```docker-compose restart tg_bot```
 
 Обновить код и перезапустить:
 ```
 docker-compose down
+git pull
 docker-compose up -d --build
 ```
 

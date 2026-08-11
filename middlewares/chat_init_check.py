@@ -8,7 +8,16 @@ from utils.permissions import has_admin_access
 
 class ChatInitMiddleware(BaseMiddleware):
 
-    ADMIN_COMMANDS = {"init", "help", "start", "setadmin", "removeadmin"}
+    ADMIN_COMMANDS = {
+        "init",
+        "help",
+        "start",
+        "setadmin",
+        "removeadmin",
+        "setqr",
+        "stopqr",
+        "startqr",
+    }
 
     async def __call__(
         self,
@@ -31,7 +40,9 @@ class ChatInitMiddleware(BaseMiddleware):
             user_id = event.from_user.id
             chat_type = event.message.chat.type
             message = event.message
-            is_admin_command = False
+            is_admin_command = bool(
+                event.data and event.data.startswith("set_qr_mode:")
+            )
         else:
             return await handler(event, data)
 

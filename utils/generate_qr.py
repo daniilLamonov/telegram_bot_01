@@ -39,12 +39,11 @@ class QRGenerationError(QRGeneratorError):
     """Ошибка генерации QR."""
 
 
-# ============================================================
-# Генерация QR
-# ============================================================
 
+def generate_qr(value: float, tab_index: int = 2) -> tuple[bytes, str]:
+    if tab_index not in {2, 3, 4, 5}:
+        raise QRGenerationError("Некорректный режим генерации QR")
 
-def generate_qr(value: float) -> tuple[bytes, str]:
     driver = None
 
     logger.info(
@@ -60,22 +59,19 @@ def generate_qr(value: float) -> tuple[bytes, str]:
         try:
             options = uc.ChromeOptions()
 
-            # Не ждём загрузки абсолютно всех ресурсов страницы.
-            options = uc.ChromeOptions()
-
-            options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-software-rasterizer")
-            options.add_argument("--window-size=1920,1080")
+            # options.add_argument("--headless=new")
+            # options.add_argument("--no-sandbox")
+            # options.add_argument("--disable-dev-shm-usage")
+            # options.add_argument("--disable-gpu")
+            # options.add_argument("--disable-software-rasterizer")
+            # options.add_argument("--window-size=1920,1080")
 
             driver = uc.Chrome(
                 options=options,
+                headless=False,
                 use_subprocess=True,
             )
 
-            # Максимальное время driver.get()
             driver.set_page_load_timeout(60)
 
         except Exception as e:
@@ -134,15 +130,13 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             driver.current_url,
         )
 
-        # 3. Даём браузеру немного времени завершить Auth
-
         logger.info(
             "Ожидание завершения авторизации"
         )
 
         time.sleep(2)
 
-        # 4. Переходим на обычную страницу
+        # 3. Переходим на обычную страницу
 
         logger.info(
             "Открытие рабочей страницы агента"
@@ -188,7 +182,29 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "title=%s",
             driver.title,
         )
-        # 4. Ввод суммы
+        # 4. Выбор Р/С
+        try:
+            tab_button = wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        By.XPATH,
+                        f'//*[@id="kassaTabs"]/button[{tab_index}]',
+                    )
+                )
+            )
+            tab_button.click()
+
+        except (TimeoutException, WebDriverException) as e:
+            raise QRGenerationError(
+                "Не удалось выбрать Р/С"
+            ) from e
+
+        logger.info(
+            "Р/С выбран. tab_index=%s",
+            tab_index,
+        )
+
+        # 5. Ввод суммы
         try:
             amount_input = wait.until(
                 EC.presence_of_element_located(
@@ -243,7 +259,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "Сумма успешно введена"
         )
 
-        # 5. Нажимаем кнопку создания QR
+        # 6. Нажимаем кнопку создания QR
 
         try:
             create_btn = wait.until(
@@ -271,7 +287,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "Кнопка создания QR нажата"
         )
 
-        # 6. Ожидаем готовый QR
+        # 7. Ожидаем готовый QR
 
         logger.info(
             "Ожидание генерации QR"
@@ -302,7 +318,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "QR успешно сгенерирован"
         )
 
-        # 7. Получаем изображение QR
+        # 8. Получаем изображение QR
 
         try:
             qr_image = driver.find_element(
@@ -332,7 +348,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
                 "Агент вернул некорректное изображение QR"
             )
 
-        # 8. Base64 -> bytes
+        # 9. Base64 -> bytes
 
         try:
             _, base64_data = src.split(",", 1)
@@ -355,7 +371,7 @@ def generate_qr(value: float) -> tuple[bytes, str]:
             "Изображение QR получено."
         )
 
-        # 9. Получаем данные для подписи
+        # 10. Получаем данные для подписи
 
         try:
             data_field = wait.until(

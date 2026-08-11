@@ -1,8 +1,9 @@
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
-from database.repositories import ChatRepo, UserRepo
+from database.repositories import ChatRepo
 from utils.helpers import temp_msg
+from utils.permissions import has_admin_access
 
 
 class ChatInitMiddleware(BaseMiddleware):
@@ -34,7 +35,7 @@ class ChatInitMiddleware(BaseMiddleware):
         else:
             return await handler(event, data)
 
-        is_admin = await UserRepo.is_admin(user_id)
+        is_admin = await has_admin_access(user_id)
 
         if chat_type == "private":
             await temp_msg(

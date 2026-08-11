@@ -21,6 +21,9 @@ from utils.keyboards import get_delete_keyboard
 
 router = Router(name="qr")
 
+MIN_QR_AMOUNT = 2_500
+MAX_QR_AMOUNT = 150_000
+
 
 @router.message(Command("qr"), IsAdminFilter())
 async def cmd_new(message: Message):
@@ -36,15 +39,19 @@ async def cmd_new(message: Message):
         return
 
     try:
-        amount = int(args[0].replace(",", "."))
-
-        if amount <= 0:
-            raise ValueError
+        amount = int("".join(args).replace(",", "."))
 
     except ValueError:
         await temp_msg(
             message,
             "❌ Некорректная сумма",
+        )
+        return
+
+    if not MIN_QR_AMOUNT <= amount <= MAX_QR_AMOUNT:
+        await temp_msg(
+            message,
+            "❌ Сумма должна быть от 2 500 до 150 000",
         )
         return
 

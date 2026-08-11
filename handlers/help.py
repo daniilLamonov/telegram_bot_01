@@ -8,10 +8,9 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import settings
-from database.repositories import UserRepo
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
+from utils.permissions import has_admin_access, is_super_admin
 
 router = Router(name="help")
 
@@ -65,8 +64,11 @@ async def cmd_start(message: Message):
         message,
         (
             "Бот для учёта чеков.\n\n"
-            "Выполните команду /init для начала работы.\n"
-            "⚠️ Для корректной работы необходимо назначить бота админом чата!!!"
+            "Для начала работы администратор чата должен выполнить "
+            "/init &lt;название КА&gt;.\n"
+            "Супер-администратор из конфигурации может выполнить /init "
+            "без отдельного назначения.\n\n"
+            "⚠️ Для корректной работы необходимо назначить бота админом чата.\n"
             "Используйте /help чтобы узнать, что я умею."
         ),
         parse_mode="HTML",
@@ -76,14 +78,13 @@ async def cmd_start(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await delete_message(message)
-    is_admin = await UserRepo.is_admin(message.from_user.id)
-    if message.from_user.id in settings.SUPER_ADMIN_ID:
+    if is_super_admin(message.from_user.id):
         await message.answer(
             get_help_main_text(),
             reply_markup=get_super_admin_keyboard(),
             parse_mode="HTML",
         )
-    elif is_admin:
+    elif await has_admin_access(message.from_user.id):
         await message.answer(
             get_help_main_text(),
             reply_markup=get_help_main_keyboard(),
@@ -100,9 +101,9 @@ async def process_help_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
 
     if callback.data == "help_back":
-        is_super_admin = user_id in settings.SUPER_ADMIN_ID
+        user_is_super_admin = is_super_admin(user_id)
 
-        if is_super_admin:
+        if user_is_super_admin:
             await callback.message.edit_text(
                 get_help_main_text(),
                 reply_markup=get_super_admin_keyboard(),
@@ -242,9 +243,10 @@ async def process_help_callback(callback: CallbackQuery):
         "help_settings": """
 ⚙️ <b>Настройки чата</b>
 Для начала работы:
-1.Добавляем бота в рабочий чат и делаем админом
- "⚠️ Для корректной работы необходимо назначить бота админом чата!!!"
-2. Инициализируем чат
+1. Добавьте бота в рабочий чат и назначьте его администратором.
+2. Инициализируйте чат от имени администратора.
+Супер-администратор из конфигурации бота уже обладает этим правом.
+
 <b>/init [Название]</b>
 Инициализировать чат
 • Создает баланс контрагента

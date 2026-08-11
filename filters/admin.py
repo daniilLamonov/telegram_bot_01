@@ -1,8 +1,8 @@
 from aiogram.filters import Filter
 from aiogram.types import Message
-from database.repositories import UserRepo
+from utils.permissions import has_admin_access
 
 
 class IsAdminFilter(Filter):
     async def __call__(self, message: Message) -> bool:
-        return await UserRepo.is_admin(message.from_user.id)
+        return await has_admin_access(message.from_user.id)

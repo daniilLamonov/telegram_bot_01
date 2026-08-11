@@ -45,7 +45,13 @@ class UserRepo(BaseRepository):
     @classmethod
     async def set_admin(cls, user_id: int, is_admin: bool = True):
         await cls._execute(
-            "UPDATE users SET is_admin = $1, updated_at = NOW() WHERE user_id = $2",
-            is_admin,
+            """
+            INSERT INTO users (user_id, is_admin)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id)
+                DO UPDATE SET is_admin = EXCLUDED.is_admin,
+                              updated_at = NOW()
+            """,
             user_id,
+            is_admin,
         )

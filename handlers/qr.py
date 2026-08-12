@@ -107,7 +107,7 @@ async def cmd_start_qr(message: Message):
 
 @router.message(Command("qr"), IsAdminFilter())
 async def cmd_new(message: Message):
-    await delete_message(message)
+    # await delete_message(message)
 
     tab_index, is_enabled = await QRSettingsRepo.get_settings()
     if not is_enabled:

@@ -64,6 +64,7 @@ def generate_qr(value: float, tab_index: int = 2) -> tuple[bytes, str]:
             driver = uc.Chrome(
                 options=options,
                 use_subprocess=True,
+                version_main=151,
             )
 
             driver.set_page_load_timeout(60)

@@ -1,22 +1,22 @@
 import asyncio
+import logging
+from uuid import uuid4
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import (
-    BufferedInputFile,
     CallbackQuery,
-    InputMediaPhoto,
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.repositories import QRSettingsRepo
 from filters.admin import IsAdminFilter
-from utils.generate_qr import (
-    AuthenticationError,
-    QRGenerationError,
-    SiteUnavailableError,
-    generate_qr,
+from services.qr_queue import (
+    CLEANUP_DELAY_MS,
+    QRCleanupTask,
+    QRJob,
+    get_qr_queue,
 )
 from utils.helpers import delete_message, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -24,9 +24,12 @@ from utils.permissions import is_super_admin
 
 
 router = Router(name="qr")
+logger = logging.getLogger(__name__)
 
 MIN_QR_AMOUNT = 2_500
 MAX_QR_AMOUNT = 150_000
+LOCAL_CLEANUP_SECONDS = CLEANUP_DELAY_MS / 1000
+_background_tasks: set[asyncio.Task] = set()
 
 QR_MODES = {
     2: "СГБ",
@@ -41,6 +44,56 @@ async def reject_non_super_admin(message: Message) -> bool:
         return False
     await temp_msg(message, "❌ У вас нет прав для этой команды")
     return True
+
+
+def schedule_local_cleanup(
+    message: Message,
+    message_ids: tuple[int, ...],
+) -> None:
+    task = asyncio.create_task(
+        delete_messages_later(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            message_ids=message_ids,
+        )
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def delete_messages_later(
+    *,
+    bot,
+    chat_id: int,
+    message_ids: tuple[int, ...],
+) -> None:
+    await asyncio.sleep(LOCAL_CLEANUP_SECONDS)
+    for message_id in message_ids:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception:
+            logger.debug(
+                "Не удалось удалить QR-сообщение chat_id=%s message_id=%s",
+                chat_id,
+                message_id,
+                exc_info=True,
+            )
+
+
+async def schedule_cleanup(
+    message: Message,
+    message_ids: tuple[int, ...],
+) -> None:
+    try:
+        await get_qr_queue().publish_cleanup(
+            QRCleanupTask(
+                chat_id=message.chat.id,
+                message_ids=message_ids,
+            )
+        )
+    except Exception:
+        logger.exception("RabbitMQ cleanup недоступен, используется локальный таймер")
+        schedule_local_cleanup(message, message_ids)
 
 
 @router.message(Command("setqr"))
@@ -107,16 +160,16 @@ async def cmd_start_qr(message: Message):
 
 @router.message(Command("qr"), IsAdminFilter())
 async def cmd_new(message: Message):
-    # await delete_message(message)
-
     tab_index, is_enabled = await QRSettingsRepo.get_settings()
     if not is_enabled:
+        await schedule_cleanup(message, (message.message_id,))
         await temp_msg(message, "Временно выключено")
         return
 
     args = message.text.split()[1:]
 
     if not args:
+        await schedule_cleanup(message, (message.message_id,))
         await temp_msg(
             message,
             "Использование: /qr <сумма>",
@@ -127,6 +180,7 @@ async def cmd_new(message: Message):
         amount = int("".join(args).replace(",", "."))
 
     except ValueError:
+        await schedule_cleanup(message, (message.message_id,))
         await temp_msg(
             message,
             "❌ Некорректная сумма",
@@ -134,6 +188,7 @@ async def cmd_new(message: Message):
         return
 
     if not MIN_QR_AMOUNT <= amount <= MAX_QR_AMOUNT:
+        await schedule_cleanup(message, (message.message_id,))
         await temp_msg(
             message,
             "❌ Сумма должна быть от 2 500 до 150 000",
@@ -143,53 +198,25 @@ async def cmd_new(message: Message):
     # Сообщение-заглушка
     processing_msg = await message.answer("⏳ QR-код в обработке...")
 
+    job = QRJob(
+        job_id=str(uuid4()),
+        chat_id=message.chat.id,
+        command_message_id=message.message_id,
+        processing_message_id=processing_msg.message_id,
+        amount=amount,
+        tab_index=tab_index,
+    )
+
     try:
-        qr_bytes, data = await asyncio.to_thread(
-            generate_qr,
-            amount,
-            tab_index,
-        )
-
-    except SiteUnavailableError:
-        await processing_msg.edit_text(
-            "❌ Сайт агента недоступен",
-            reply_markup=get_delete_keyboard(),
-        )
-        return
-
-    except AuthenticationError:
-        await processing_msg.edit_text(
-            "❌ Не удалось авторизоваться у агента",
-            reply_markup=get_delete_keyboard(),
-        )
-        return
-
-    except QRGenerationError as e:
-        await processing_msg.edit_text(
-            f"❌ {e}",
-            reply_markup=get_delete_keyboard(),
-        )
-        return
-
+        await get_qr_queue().publish_job(job)
     except Exception:
+        logger.exception("Не удалось поставить QR в RabbitMQ")
         await processing_msg.edit_text(
-            "❌ Произошла неизвестная ошибка",
+            "❌ Очередь QR временно недоступна",
             reply_markup=get_delete_keyboard(),
         )
+        schedule_local_cleanup(
+            message,
+            (message.message_id, processing_msg.message_id),
+        )
         return
-
-    # Превращаем байты в Telegram-файл
-    photo = BufferedInputFile(
-        qr_bytes,
-        filename="qr.png",
-    )
-
-    # Редактируем "QR-код в обработке..."
-    # прямо в сообщение с картинкой + подписью
-    await processing_msg.edit_media(
-        media=InputMediaPhoto(
-            media=photo,
-            caption=data,
-        ),
-        reply_markup=get_delete_keyboard(),
-    )

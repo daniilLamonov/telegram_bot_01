@@ -1,4 +1,22 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-qr_bot}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-change_me}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-/}
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
   postgres:
     image: postgres:17
     container_name: database
@@ -31,9 +49,35 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./files:/app/files
     environment:
       - FILES_DIR=/app/files/checks
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-qr_bot}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-change_me}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+
+  qr_worker:
+    build:
+      context: .
+    container_name: qr_worker
+    restart: always
+    entrypoint: [ "python", "-u", "qr_worker.py" ]
+    env_file:
+      - .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-qr_bot}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-change_me}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
 volumes:
   postgres_data:
+  rabbitmq_data:

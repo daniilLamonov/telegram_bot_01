@@ -12,6 +12,7 @@ from database.connection import init_db, close_db
 from handlers import router
 from middlewares.register_user import RegisterUserMiddleware
 from middlewares.timeout_middleware import StateTimeoutMiddleware
+from services.qr_queue import close_qr_queue, init_qr_queue
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -27,18 +28,18 @@ async def set_bot_commands(bot: Bot):
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
 
 
-
 async def main():
     await init_db()
+    try:
+        await init_qr_queue()
+    except Exception:
+        logger.exception(
+            "RabbitMQ недоступен при запуске; /qr будет повторять подключение"
+        )
 
     logging.basicConfig(
         level=logging.INFO,
-        format=(
-            "%(asctime)s | "
-            "%(levelname)s | "
-            "%(name)s | "
-            "%(message)s"
-        ),
+        format=("%(asctime)s | " "%(levelname)s | " "%(name)s | " "%(message)s"),
     )
 
     bot = Bot(token=settings.BOT_TOKEN.get_secret_value())
@@ -54,12 +55,12 @@ async def main():
 
     dp.include_router(router)
 
-    scheduler = AsyncIOScheduler(timezone=timezone('Europe/Moscow'))
+    scheduler = AsyncIOScheduler(timezone=timezone("Europe/Moscow"))
 
     scheduler.add_job(
         generate_daily_report,
-        trigger=CronTrigger(hour=20, minute=00, timezone='Europe/Moscow'),
-        kwargs={'bot': bot, 'chat_id': settings.REPORT_CHAT_ID}
+        trigger=CronTrigger(hour=20, minute=00, timezone="Europe/Moscow"),
+        kwargs={"bot": bot, "chat_id": settings.REPORT_CHAT_ID},
     )
 
     scheduler.start()
@@ -70,6 +71,7 @@ async def main():
     try:
         await dp.start_polling(bot)
     finally:
+        await close_qr_queue()
         await close_db()
         await bot.session.close()
 

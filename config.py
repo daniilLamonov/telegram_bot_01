@@ -8,7 +8,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-moscow_tz = pytz.timezone('Europe/Moscow')
+moscow_tz = pytz.timezone("Europe/Moscow")
+
 
 class Settings(BaseSettings):
 
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
 
     AUTH_URL: str
     PAGE_URL: str
+
+    RABBITMQ_HOST: str = "rabbitmq"
+    RABBITMQ_PORT: int = 5672
+    RABBITMQ_USER: str = "guest"
+    RABBITMQ_PASSWORD: SecretStr = SecretStr("guest")
+    RABBITMQ_VHOST: str = "/"
 
     @property
     def DATABASE_URL(self) -> str:

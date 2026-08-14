@@ -36,7 +36,7 @@ class QRGenerationError(QRGeneratorError):
 
 
 def generate_qr(value: float, tab_index: int = 2) -> tuple[bytes, str]:
-    if tab_index not in {2, 3, 4, 5}:
+    if tab_index not in range(1, 7):
         raise QRGenerationError("Некорректный режим генерации QR")
 
     driver = None

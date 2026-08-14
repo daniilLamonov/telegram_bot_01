@@ -5,7 +5,7 @@ class QRSettingsRepo(BaseRepository):
     """Persistent global settings for QR generation."""
 
     DEFAULT_TAB_INDEX = 2
-    ALLOWED_TAB_INDEXES = frozenset({2, 3, 4, 5})
+    ALLOWED_TAB_INDEXES = frozenset(range(1, 7))
 
     @classmethod
     async def get_settings(cls) -> tuple[int, bool]:

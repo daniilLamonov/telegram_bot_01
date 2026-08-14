@@ -146,7 +146,7 @@ async def test_local_cleanup_deletes_each_message(monkeypatch):
 async def test_set_qr_mode_persists_selected_tab(monkeypatch):
     callback_message = SimpleNamespace(edit_text=AsyncMock())
     callback = SimpleNamespace(
-        data="set_qr_mode:5",
+        data="set_qr_mode:6",
         from_user=SimpleNamespace(id=100),
         message=callback_message,
         answer=AsyncMock(),
@@ -157,8 +157,10 @@ async def test_set_qr_mode_persists_selected_tab(monkeypatch):
 
     await qr.set_qr_mode(callback)
 
-    set_tab_index.assert_awaited_once_with(5)
-    callback_message.edit_text.assert_awaited_once_with("✅ Р/С выбран: РОСДОР")
+    set_tab_index.assert_awaited_once_with(6)
+    callback_message.edit_text.assert_awaited_once_with(
+        "✅ Р/С выбран: Платформа РосДор"
+    )
 
 
 @pytest.mark.asyncio
@@ -181,10 +183,12 @@ async def test_set_qr_command_shows_all_modes(monkeypatch):
         for button in row
     ]
     assert buttons == [
-        ("СГБ", "set_qr_mode:2"),
-        ("РАЙФ", "set_qr_mode:4"),
-        ("РОСДОР", "set_qr_mode:5"),
-        ("КУБАНЬ", "set_qr_mode:3"),
+        ("Веронт Долинск", "set_qr_mode:1"),
+        ("ВестКост", "set_qr_mode:2"),
+        ("Глобал Тбанк", "set_qr_mode:3"),
+        ("Платформа Кубань", "set_qr_mode:4"),
+        ("Платформа Райфайзен", "set_qr_mode:5"),
+        ("Платформа РосДор", "set_qr_mode:6"),
     ]
 
 

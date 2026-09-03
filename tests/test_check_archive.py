@@ -1,4 +1,3 @@
-import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -6,58 +5,106 @@ from pathlib import Path
 from utils.check_archive import (
     CheckFile,
     build_archives,
-    collect_check_files,
-    get_file_datetime,
+    extract_filename,
+    resolve_check_files,
     split_by_size,
 )
 
 
-def make_check(root: Path, name: str, size: int = 10, mtime: datetime | None = None) -> Path:
+def make_operation(operation_id: str, filename: str | None, timestamp: datetime) -> dict:
+    description = "Плательщик: Иванов. Зачислено: 100.00 ₽. Тип: фото."
+    if filename is not None:
+        description += f" Файл: {filename}"
+    return {
+        "operation_id": operation_id,
+        "timestamp": timestamp,
+        "description": description,
+    }
+
+
+def make_file(root: Path, name: str, size: int = 10) -> Path:
     path = root / name
     path.write_bytes(b"x" * size)
-    if mtime:
-        os.utime(path, (mtime.timestamp(), mtime.timestamp()))
     return path
 
 
-def test_date_is_taken_from_file_name(tmp_path):
-    path = make_check(tmp_path, "check_-100500_20260902_143000.jpg")
-    assert get_file_datetime(path) == datetime(2026, 9, 2, 14, 30, 0)
-
-
-def test_date_falls_back_to_mtime_for_foreign_names(tmp_path):
-    mtime = datetime(2026, 9, 2, 8, 0, 0)
-    path = make_check(tmp_path, "scan.pdf", mtime=mtime)
-    assert get_file_datetime(path) == mtime
-
-
-def test_collect_returns_only_files_of_the_period_sorted(tmp_path):
-    make_check(tmp_path, "check_-1_20260901_235959.jpg")
-    make_check(tmp_path, "check_-1_20260902_090000.jpg")
-    make_check(tmp_path, "check_-2_20260902_010000.jpg")
-    make_check(tmp_path, "check_-1_20260903_000000.jpg")
-
-    found = collect_check_files(
-        tmp_path,
-        datetime(2026, 9, 2, 0, 0, 0),
-        datetime(2026, 9, 2, 23, 59, 59),
+def test_extract_filename():
+    assert (
+        extract_filename("Плательщик: Иванов. Тип: фото. Файл: check_-1_20260902_120000.jpg")
+        == "check_-1_20260902_120000.jpg"
     )
+    assert extract_filename("Файл:  scan.pdf  ") == "scan.pdf"
+    assert extract_filename("Плательщик: Иванов") is None
+    assert extract_filename(None) is None
 
-    assert [item.path.name for item in found] == [
-        "check_-2_20260902_010000.jpg",
-        "check_-1_20260902_090000.jpg",
+
+def test_date_comes_from_the_operation_not_from_the_file_name(tmp_path):
+    """Чеку поменяли дату вручную — файл должен уехать в выгрузку за новую дату."""
+    make_file(tmp_path, "check_-1_20260830_120000.jpg")
+    moved = make_operation("aaaa1111", "check_-1_20260830_120000.jpg", datetime(2026, 9, 2, 10, 0))
+
+    selection = resolve_check_files([moved], tmp_path)
+
+    assert selection.missing == []
+    assert [item.check_date for item in selection.files] == [datetime(2026, 9, 2, 10, 0)]
+
+
+def test_files_are_ordered_by_operation_date(tmp_path):
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        make_file(tmp_path, name)
+    operations = [
+        make_operation("op1", "a.jpg", datetime(2026, 9, 2, 18, 0)),
+        make_operation("op2", "b.jpg", datetime(2026, 9, 2, 9, 0)),
+        make_operation("op3", "c.jpg", datetime(2026, 9, 2, 12, 0)),
     ]
 
+    selection = resolve_check_files(operations, tmp_path)
 
-def test_collect_on_missing_directory(tmp_path):
-    assert collect_check_files(tmp_path / "nope", datetime(2026, 9, 2), datetime(2026, 9, 3)) == []
+    assert [item.path.name for item in selection.files] == ["b.jpg", "c.jpg", "a.jpg"]
+
+
+def test_operations_without_file_on_disk_are_reported(tmp_path):
+    make_file(tmp_path, "there.jpg")
+    operations = [
+        make_operation("op1", "there.jpg", datetime(2026, 9, 2, 9, 0)),
+        make_operation("op2", "gone.jpg", datetime(2026, 9, 2, 10, 0)),
+        make_operation("op3", None, datetime(2026, 9, 2, 11, 0)),
+    ]
+
+    selection = resolve_check_files(operations, tmp_path)
+
+    assert [item.path.name for item in selection.files] == ["there.jpg"]
+    assert selection.missing == ["op2", "op3"]
+
+
+def test_same_file_referenced_twice_is_packed_once(tmp_path):
+    make_file(tmp_path, "one.jpg")
+    operations = [
+        make_operation("op1", "one.jpg", datetime(2026, 9, 2, 9, 0)),
+        make_operation("op2", "one.jpg", datetime(2026, 9, 2, 10, 0)),
+    ]
+
+    selection = resolve_check_files(operations, tmp_path)
+
+    assert len(selection.files) == 1
+    assert selection.missing == []
+
+
+def test_path_outside_the_checks_directory_is_rejected(tmp_path):
+    checks = tmp_path / "checks"
+    checks.mkdir()
+    make_file(tmp_path, "secret.env")
+
+    selection = resolve_check_files(
+        [make_operation("op1", "../secret.env", datetime(2026, 9, 2, 9, 0))], checks
+    )
+
+    assert selection.files == []
+    assert selection.missing == ["op1"]
 
 
 def test_split_keeps_parts_within_the_limit():
-    files = [
-        CheckFile(Path(f"check_{i}.jpg"), 40, datetime(2026, 9, 2))
-        for i in range(5)
-    ]
+    files = [CheckFile(Path(f"check_{i}.jpg"), 40, datetime(2026, 9, 2)) for i in range(5)]
 
     chunks = split_by_size(files, max_part_size=100)
 
@@ -80,10 +127,13 @@ def test_build_archives_packs_every_file(tmp_path):
     checks.mkdir()
     dest = tmp_path / "out"
     dest.mkdir()
+    operations = []
     for i in range(3):
-        make_check(checks, f"check_-1_2026090{i + 1}_120000.jpg", size=40)
+        name = f"check_-1_2026090{i + 1}_120000.jpg"
+        make_file(checks, name, size=40)
+        operations.append(make_operation(f"op{i}", name, datetime(2026, 9, i + 1, 12, 0)))
 
-    files = collect_check_files(checks, datetime(2026, 9, 1), datetime(2026, 9, 4))
+    files = resolve_check_files(operations, checks).files
     archives = build_archives(files, checks, dest, "checks_period", max_part_size=100)
 
     assert [archive.path.name for archive in archives] == [
@@ -101,9 +151,12 @@ def test_build_archives_packs_every_file(tmp_path):
 def test_single_part_archive_keeps_plain_name(tmp_path):
     checks = tmp_path / "checks"
     checks.mkdir()
-    make_check(checks, "check_-1_20260902_120000.jpg")
+    make_file(checks, "check_-1_20260902_120000.jpg")
+    operations = [
+        make_operation("op1", "check_-1_20260902_120000.jpg", datetime(2026, 9, 2, 12, 0))
+    ]
 
-    files = collect_check_files(checks, datetime(2026, 9, 2), datetime(2026, 9, 3))
+    files = resolve_check_files(operations, checks).files
     archives = build_archives(files, checks, tmp_path, "checks_02.09.2026")
 
     assert len(archives) == 1

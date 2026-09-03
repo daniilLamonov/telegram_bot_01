@@ -22,7 +22,7 @@ from filters.admin import IsAdminFilter
 from states import CompareStates
 from utils.daily_report import generate_daily_report
 from utils.excel import export_to_excel, export_comparison_report, export_comparison_report_exl
-from utils.check_archive import build_archives, collect_check_files, split_by_size
+from utils.check_archive import build_archives, resolve_check_files, split_by_size
 from utils.dateparse import parse_date_period
 from utils.helpers import delete_message, format_size, temp_msg
 from utils.keyboards import get_delete_keyboard
@@ -624,13 +624,35 @@ async def cmd_load_checks(message: Message, command: CommandObject):
         temp_dir = None
 
         try:
-            files = await asyncio.to_thread(
-                collect_check_files, settings.FILES_DIR, start_date, end_date
+            # границу берём по началу следующего дня: в запросе сравнение строгое
+            db_end = end_date.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ) + timedelta(days=1)
+            operations = await OperationRepo.get_all_checks_by_date(start_date, db_end)
+
+            if not operations:
+                await status_msg.edit_text(
+                    f"📭 Чеки за {period_str} не найдены",
+                    reply_markup=get_delete_keyboard(),
+                )
+                return
+
+            selection = await asyncio.to_thread(
+                resolve_check_files, operations, settings.FILES_DIR
             )
+            files = selection.files
+
+            if selection.missing:
+                logger.warning(
+                    "Файлы чеков не найдены на сервере (%s шт.): %s",
+                    len(selection.missing),
+                    ", ".join(selection.missing),
+                )
 
             if not files:
                 await status_msg.edit_text(
-                    f"📭 Чеки за {period_str} не найдены",
+                    f"❌ Чеки за {period_str} есть в базе ({len(operations)} шт.), "
+                    f"но ни одного файла не найдено на сервере",
                     reply_markup=get_delete_keyboard(),
                 )
                 return
@@ -670,6 +692,14 @@ async def cmd_load_checks(message: Message, command: CommandObject):
                 )
                 if len(archives) > 1:
                     caption += f"\nЧасть {index} из {len(archives)}"
+                if index == len(archives) and selection.missing:
+                    shown = ", ".join(selection.missing[:10])
+                    if len(selection.missing) > 10:
+                        shown += ", ..."
+                    caption += (
+                        f"\n⚠️ Не найдено файлов на сервере: "
+                        f"{len(selection.missing)} шт. (ID: {shown})"
+                    )
 
                 send_document = message.answer_document(
                     document=FSInputFile(archive.path),

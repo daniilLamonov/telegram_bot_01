@@ -6,10 +6,10 @@ import re
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Iterable, NamedTuple
 
-# Имя, под которым /check сохраняет файл: check_{chat_id}_{YYYYMMDD_HHMMSS}.{ext}
-_CHECK_NAME_RE = re.compile(r"^check_-?\d+_(\d{8}_\d{6})\.")
+# В описании операции файл чека хранится как "... Файл: check_-100_20260902_143000.jpg"
+_FILENAME_RE = re.compile(r"Файл:\s*(.+?)\s*$")
 
 # Bot API не принимает документы больше 50 МБ, оставляем запас на служебные данные
 MAX_PART_SIZE = 45 * 1024 * 1024
@@ -18,7 +18,7 @@ MAX_PART_SIZE = 45 * 1024 * 1024
 class CheckFile(NamedTuple):
     path: Path
     size: int
-    created_at: datetime
+    check_date: datetime
 
 
 class CheckArchive(NamedTuple):
@@ -27,35 +27,47 @@ class CheckArchive(NamedTuple):
     size: int
 
 
-def get_file_datetime(path: Path) -> datetime:
-    """Дата чека: из имени файла, а для нестандартных имён — из времени изменения."""
-    match = _CHECK_NAME_RE.match(path.name)
-    if match:
-        try:
-            return datetime.strptime(match.group(1), "%Y%m%d_%H%M%S")
-        except ValueError:
-            pass
-    return datetime.fromtimestamp(path.stat().st_mtime)
+class CheckSelection(NamedTuple):
+    files: list[CheckFile]
+    missing: list[str]  # operation_id чеков, файл которых не найден на сервере
 
 
-def collect_check_files(
-    files_dir: str | Path, start_date: datetime, end_date: datetime
-) -> list[CheckFile]:
-    """Вернуть чеки, сохранённые в интервале [start_date, end_date]."""
-    root = Path(files_dir)
-    if not root.is_dir():
-        return []
+def extract_filename(description: str | None) -> str | None:
+    """Достать имя файла чека из описания операции."""
+    if not description:
+        return None
+    match = _FILENAME_RE.search(description)
+    return match.group(1) if match else None
 
-    found: list[CheckFile] = []
-    for path in root.rglob("*"):
-        if not path.is_file():
+
+def resolve_check_files(
+    operations: Iterable[dict], files_dir: str | Path
+) -> CheckSelection:
+    """Сопоставить операции из БД с файлами чеков на диске.
+
+    Дата чека берётся из записи операции, а не из имени файла или его
+    метаданных: дату могли изменить вручную, и чек должен попадать
+    в выгрузку за ту дату, которая указана в записи.
+    """
+    root = Path(files_dir).resolve()
+    files: dict[Path, CheckFile] = {}
+    missing: list[str] = []
+
+    for operation in operations:
+        filename = extract_filename(operation.get("description"))
+        path = (root / filename).resolve() if filename else None
+
+        if path is None or not path.is_relative_to(root) or not path.is_file():
+            missing.append(operation["operation_id"])
             continue
-        created_at = get_file_datetime(path)
-        if start_date <= created_at <= end_date:
-            found.append(CheckFile(path, path.stat().st_size, created_at))
 
-    found.sort(key=lambda item: item.created_at)
-    return found
+        if path in files:
+            continue
+
+        files[path] = CheckFile(path, path.stat().st_size, operation["timestamp"])
+
+    ordered = sorted(files.values(), key=lambda item: item.check_date)
+    return CheckSelection(ordered, missing)
 
 
 def split_by_size(
@@ -86,7 +98,7 @@ def build_archives(
     max_part_size: int = MAX_PART_SIZE,
 ) -> list[CheckArchive]:
     """Упаковать чеки в zip-архивы в ``dest_dir`` и вернуть описание частей."""
-    root = Path(root)
+    root = Path(root).resolve()
     dest = Path(dest_dir)
     archives: list[CheckArchive] = []
 

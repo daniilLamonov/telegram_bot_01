@@ -26,3 +26,11 @@ def format_amount(amount: float):
     else:
         f_amount = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
     return f_amount
+
+
+def format_size(size_bytes: float) -> str:
+    for unit in ("Б", "КБ", "МБ"):
+        if size_bytes < 1024:
+            return f"{size_bytes:.0f} {unit}" if unit == "Б" else f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} ГБ"

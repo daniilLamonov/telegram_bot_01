@@ -1,5 +1,7 @@
 import asyncio
 import re
+import shutil
+import tempfile
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 from io import BytesIO
@@ -9,9 +11,9 @@ from collections import Counter
 
 import pytz
 from aiogram import Router
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, FSInputFile, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings, logger
@@ -20,8 +22,9 @@ from filters.admin import IsAdminFilter
 from states import CompareStates
 from utils.daily_report import generate_daily_report
 from utils.excel import export_to_excel, export_comparison_report, export_comparison_report_exl
+from utils.check_archive import build_archives, collect_check_files, split_by_size
 from utils.dateparse import parse_date_period
-from utils.helpers import delete_message, temp_msg
+from utils.helpers import delete_message, format_size, temp_msg
 from utils.keyboards import get_delete_keyboard
 
 router = Router(name="export")
@@ -572,3 +575,115 @@ async def cmd_daily_report(message: Message):
 
     await generate_daily_report(message.bot, message.chat.id)
 
+
+
+LOAD_CHECKS_MAX_PARTS = 20
+# архив может весить десятки МБ, стандартных 60 секунд на загрузку не хватает
+LOAD_CHECKS_TIMEOUT = 300
+_load_checks_lock = asyncio.Lock()
+
+
+@router.message(Command("load-check", "loadcheck", "load_check"), IsAdminFilter())
+async def cmd_load_checks(message: Message, command: CommandObject):
+    """Собрать файлы чеков за период в zip-архив и прислать его в чат."""
+    await delete_message(message)
+
+    if message.from_user.id not in SUPER_ADMIN_ID:
+        await temp_msg(message, "❌ У вас нет прав для этой команды")
+        return
+
+    start_date, end_date, err = parse_date_period(
+        f"/load-check {command.args or ''}", "/load-check"
+    )
+    if err:
+        await temp_msg(message, err)
+        return
+
+    if start_date is None:
+        start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date.replace(hour=23, minute=59, second=59)
+
+    one_day = start_date.date() == end_date.date()
+    period_str = (
+        start_date.strftime("%d.%m.%Y")
+        if one_day
+        else f"{start_date.strftime('%d.%m.%Y')}–{end_date.strftime('%d.%m.%Y')}"
+    )
+    base_name = (
+        f"checks_{start_date.strftime('%d.%m.%Y')}"
+        if one_day
+        else f"checks_{start_date.strftime('%d.%m.%Y')}-{end_date.strftime('%d.%m.%Y')}"
+    )
+
+    if _load_checks_lock.locked():
+        await temp_msg(message, "⏳ Выгрузка чеков уже выполняется, попробуйте позже")
+        return
+
+    async with _load_checks_lock:
+        status_msg = await message.answer(f"🔎 Ищу чеки за {period_str}...")
+        temp_dir = None
+
+        try:
+            files = await asyncio.to_thread(
+                collect_check_files, settings.FILES_DIR, start_date, end_date
+            )
+
+            if not files:
+                await status_msg.edit_text(
+                    f"📭 Чеки за {period_str} не найдены",
+                    reply_markup=get_delete_keyboard(),
+                )
+                return
+
+            total_size = sum(item.size for item in files)
+            parts_count = len(split_by_size(files))
+
+            if parts_count > LOAD_CHECKS_MAX_PARTS:
+                await status_msg.edit_text(
+                    f"❌ За {period_str} слишком много чеков: {len(files)} шт. "
+                    f"({format_size(total_size)}), это {parts_count} архивов.\n"
+                    f"Запросите период покороче.",
+                    reply_markup=get_delete_keyboard(),
+                )
+                return
+
+            parts_str = "архив" if parts_count == 1 else f"{parts_count} архивов"
+            await status_msg.edit_text(
+                f"📦 Найдено {len(files)} чеков ({format_size(total_size)}).\n"
+                f"Собираю {parts_str}..."
+            )
+
+            temp_dir = await asyncio.to_thread(tempfile.mkdtemp, prefix="checks_")
+            archives = await asyncio.to_thread(
+                build_archives, files, settings.FILES_DIR, temp_dir, base_name
+            )
+
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
+            for index, archive in enumerate(archives, start=1):
+                caption = (
+                    f"🧾 Чеки за {period_str}\n"
+                    f"Файлов: {archive.files_count} · Размер: {format_size(archive.size)}"
+                )
+                if len(archives) > 1:
+                    caption += f"\nЧасть {index} из {len(archives)}"
+
+                send_document = message.answer_document(
+                    document=FSInputFile(archive.path),
+                    caption=caption,
+                    reply_markup=get_delete_keyboard(),
+                )
+                await message.bot(send_document, request_timeout=LOAD_CHECKS_TIMEOUT)
+
+        except Exception as e:
+            logger.exception("Не удалось выгрузить чеки за период")
+            try:
+                await status_msg.edit_text(f"❌ Ошибка при выгрузке чеков: {e}")
+            except Exception:
+                await message.answer(f"❌ Ошибка при выгрузке чеков: {e}")
+        finally:
+            if temp_dir:
+                await asyncio.to_thread(shutil.rmtree, temp_dir, True)

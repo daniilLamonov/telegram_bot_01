@@ -67,9 +67,9 @@ async def cmd_reconciliation(message: Message, state: FSMContext):
         "Выберите период для сверки:\n\n"
         "• <b>Сегодня</b> - все чеки за сегодня\n"
         "• <b>Вчера</b> - все чеки за вчерашний день\n"
-        "• <b>Ввести дату</b> - укажите конкретную дату\n\n"
-        "Формат ввода даты: <code>ДД.ММ.ГГГГ</code>\n"
-        "Пример: <code>12.01.2026</code>"
+        "• <b>Ввести дату</b> - конкретная дата или период\n\n"
+        "Формат: <code>ДД.ММ.ГГГГ</code> или <code>ДД.ММ.ГГГГ - ДД.ММ.ГГГГ</code>\n"
+        "Пример: <code>12.01.2026 - 18.01.2026</code>"
     )
 
     bot_msg = await message.answer(
@@ -141,9 +141,10 @@ async def sv_custom(callback: CallbackQuery, state: FSMContext):
     builder.button(text="❌ Отмена", callback_data="sv_cancel")
 
     bot_msg = await callback.message.answer(
-        "📝 <b>Введите дату сверки</b>\n\n"
+        "📝 <b>Введите дату или период сверки</b>\n\n"
         "Формат: <code>ДД.ММ.ГГГГ</code>\n"
-        "Пример: <code>12.01.2026</code>\n\n"
+        "Период: <code>ДД.ММ.ГГГГ - ДД.ММ.ГГГГ</code>\n"
+        "Пример: <code>12.01.2026 - 18.01.2026</code>\n\n"
         "Или <code>сегодня</code> / <code>вчера</code>",
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
@@ -179,30 +180,53 @@ async def process_custom_date(message: Message, state: FSMContext):
         ) - timedelta(days=1)
         period_name = "Вчера"
     else:
-        match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", text)
+        parts = [p.strip() for p in re.split(r"\s*(?:-|–|—)\s*", text)]
+        dates = []
+        for part in parts:
+            match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", part)
+            if not match or len(parts) > 2:
+                dates = None
+                break
+            day, month, year = map(int, match.groups())
+            try:
+                dates.append(datetime(year, month, day))
+            except ValueError:
+                await temp_msg(
+                    message,
+                    "❌ <b>Некорректная дата!</b>\n\n" "Проверьте правильность даты.",
+                    10,
+                    parse_mode="HTML",
+                )
+                return
 
-        if not match:
+        if not dates:
             await temp_msg(
                 message,
                 "❌ <b>Неверный формат даты!</b>\n\n"
-                "Используйте: <code>ДД.ММ.ГГГГ</code>\n"
+                "Используйте: <code>ДД.ММ.ГГГГ</code> или период "
+                "<code>ДД.ММ.ГГГГ - ДД.ММ.ГГГГ</code>\n"
                 "Пример: <code>12.01.2026</code>",
                 10,
                 parse_mode="HTML",
             )
             return
 
-        day, month, year = map(int, match.groups())
-
-        try:
-            target_date = datetime(year, month, day)
-            period_name = target_date.strftime("%d.%m.%Y")
-        except ValueError:
-            await temp_msg(
+        target_date = dates[0]
+        period_name = target_date.strftime("%d.%m.%Y")
+        if len(dates) == 2:
+            if dates[1] < dates[0]:
+                dates.reverse()
+            target_date, last_date = dates
+            period_name = (
+                f"{target_date.strftime('%d.%m.%Y')} - {last_date.strftime('%d.%m.%Y')}"
+            )
+            await show_checks_for_period(
                 message,
-                "❌ <b>Некорректная дата!</b>\n\n" "Проверьте правильность даты.",
-                10,
-                parse_mode="HTML",
+                balance_id,
+                target_date,
+                last_date + timedelta(days=1),
+                period_name,
+                state,
             )
             return
 
@@ -235,6 +259,7 @@ async def show_checks_for_period(
         return
 
     total_amount = sum(check["amount"] for check in checks)
+    time_fmt = "%d.%m %H:%M" if (end_date - start_date).days > 1 else "%H:%M"
 
     checks_list = []
     for idx, check in enumerate(checks, 1):
@@ -242,7 +267,7 @@ async def show_checks_for_period(
         payer_match = re.search(r"Плательщик: ([^.]+)", desc)
         payer = payer_match.group(1) if payer_match else "Не указано"
 
-        time_str = check["timestamp"].strftime("%H:%M")
+        time_str = check["timestamp"].strftime(time_fmt)
 
         checks_list.append(
             f"{idx}. <code>{check['operation_id'][:8]}</code> | "
@@ -282,7 +307,7 @@ async def show_checks_for_period(
                 desc = check["description"]
                 payer_match = re.search(r"Плательщик: ([^.]+)", desc)
                 payer = payer_match.group(1) if payer_match else "Не указано"
-                time_str = check["timestamp"].strftime("%H:%M")
+                time_str = check["timestamp"].strftime(time_fmt)
 
                 chunk_list.append(
                     f"{idx}. <code>{check['operation_id'][:8]}</code> | "
